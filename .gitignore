@@ -1,3 +1,9 @@
+# Mesh related files
+*.vtk
+*.h5m
+*.msh
+*.geo
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
