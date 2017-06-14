@@ -1,0 +1,9 @@
+Under any subfolder, the following command will do the preprocessing and
+generate a .h5m file:
+
+$ python -m elliptic.Preprocess presto.Preprocessors.<Preprocessor> <config>
+
+Replacing <Preprocessor> with the desired module and <config> with the config file.
+
+For example, under the multiscale example folder, run the following command:
+$ python -m elliptic.Preprocess presto.Preprocessors.Multiscale.Structured structured.cfg
