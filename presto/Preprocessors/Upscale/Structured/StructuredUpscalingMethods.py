@@ -24,7 +24,6 @@ class StructuredUpscalingMethods:
         self.coarse_ratio = coarse_ratio
         self.mesh_size = mesh_size
         self.block_size = block_size
-        self.block_size_coarse = []
 
         self.verts = None  # Array containing MOAB vertex entities
         self.elems = []  # List containing MOAB volume entities
@@ -47,32 +46,35 @@ class StructuredUpscalingMethods:
         self.root_set = self.mb.get_root_set()
         self.mesh_topo_util = topo_util.MeshTopoUtil(self.mb)
 
-    def block_coarse_coords(self, mesh_size, block_size, coarse_ratio):
-        # TODO: - Should go on Common
-
-        total_size = np.asarray(self.mesh_size, dtype='int32') * np.asarray(
+    def get_block_size_coarse(self):
+        block_size_coarse = []
+        total_size = (np.asarray(self.mesh_size, dtype='int32')) * np.asarray(
             self.block_size, dtype='float64')
-        mesh_size_coarse = np.asarray(
-            self.mesh_size, dtype='int32') // np.asarray(
-                self.coarse_ratio, dtype='int32')
 
         for dim in range(0, 3):
-            self.block_size_coarse.append([self.coarse_ratio[dim]*np.asarray(
+            block_size_coarse.append([self.coarse_ratio[dim]*np.asarray(
                 self.block_size[dim], dtype='float64') * self.mesh_size[dim]
-                for self.mesh_size[dim] in np.arange(mesh_size_coarse[dim],
+                for self.mesh_size[dim] in np.arange(self._coarse_dims()[dim],
                                                      dtype='int32')])
-            self.block_size_coarse[dim].append(total_size[dim])
+            block_size_coarse[dim].append(total_size[dim])
+        return block_size_coarse
 
+
+    def create_coarse_vertices(self):
+        # TODO: - Should go on Common
+
+        block_size_coarse = self.bypass
+        
         coarse_coords = np.array([
             (i, j, k)
-            for k in (np.array(self.block_size_coarse[2], dtype='float64'))
-            for j in (np.array(self.block_size_coarse[1], dtype='float64'))
-            for i in (np.array(self.block_size_coarse[0], dtype='float64'))
+            for k in (np.array(block_size_coarse[2], dtype='float64'))
+            for j in (np.array(block_size_coarse[1], dtype='float64'))
+            for i in (np.array(block_size_coarse[0], dtype='float64'))
             ])
 
         return self.mb.create_vertices(coarse_coords.flatten())
 
-    def _coarse_dims(self, mesh_size, coarse_ratio):
+    def _coarse_dims(self,):
         # TODO: - Should go on Common
 
         mesh_size_coarse = np.asarray(
@@ -80,25 +82,12 @@ class StructuredUpscalingMethods:
                 self.coarse_ratio, dtype='int32')
         return mesh_size_coarse
 
-    def create_coarse_verts(self):
-        # TODO: - Should go on Common
-
-        coarse_coords = np.array([
-            (i, j, k)
-            for k in (np.array(self.block_size_coarse[2], dtype='float64'))
-            for j in (np.array(self.block_size_coarse[1], dtype='float64'))
-            for i in (np.array(self.block_size_coarse[0], dtype='float64'))
-            ])
-
-        return self.mb.create_vertices(coarse_coords.flatten())
-
     def calculate_primal_ids(self):
         # TODO: - Should go on Common
-
         for dim in range(0, 3):
             self.primal_ids.append(
                 [i // (self.coarse_ratio[dim]) for i in xrange(
-                    self.mesh_size[dim])])
+                        self.mesh_size[dim])])
 
         new_primal = []
         for dim in range(0, 3):
@@ -126,7 +115,6 @@ class StructuredUpscalingMethods:
             for i in (np.arange(self.mesh_size[0] + 1,
                                 dtype='float64')*self.block_size[0])
         ], dtype='float64')
-
         return self.mb.create_vertices(coords.flatten())
 
     def create_tags(self):
@@ -178,33 +166,28 @@ class StructuredUpscalingMethods:
             "COLLOCATION_POINT", 1, types.MB_TYPE_HANDLE,
             types.MB_TAG_SPARSE, True)
 
-    def _create_hexa(self, i, j, k,  verts):
+    def _create_hexa(self, i, j, k,  verts, mesh):
         # TODO: - Should go on Common
         #       - Refactor this (????????)
                 # (i, j, k)
-        hexa = [verts[(i)+(j*(self.mesh_size[0]+1))+(k*((
-            self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
+        hexa = [verts[(i)+(j*(mesh[0]+1))+(k*((mesh[0]+1)*(mesh[1]+1)))],
                 # (i+1, j, k)
-                verts[(i+1)+(j*(self.mesh_size[0]+1))+(k*((
-                    self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
+                verts[(i+1)+(j*(mesh[0]+1))+(k*((mesh[0]+1)*(mesh[1]+1)))],
                 # (i+1, j+1, k)
-                verts[(i+1)+(j+1)*(self.mesh_size[0])+(j+1)+(k*((
-                    self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
+                verts[(i+1)+(j+1)*(mesh[0])+(j+1)+(k*((
+                    mesh[0]+1)*(mesh[1]+1)))],
                 # (i, j+1, k)
-                verts[(i)+(j+1)*(self.mesh_size[0])+(j+1)+(k*((
-                    self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
+                verts[(i)+(j+1)*(mesh[0])+(j+1)+(k*((mesh[0]+1)*(mesh[1]+1)))],
                 # (i, j, k+1)
-                verts[(i)+(j*(self.mesh_size[0]+1))+((k+1)*((
-                    self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
+                verts[(i)+(j*(mesh[0]+1))+((k+1)*((mesh[0]+1)*(mesh[1]+1)))],
                 # (i+1, j, k+1)
-                verts[(i+1)+(j*(self.mesh_size[0]+1))+((k+1)*((
-                    self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
+                verts[(i+1)+(j*(mesh[0]+1))+((k+1)*((mesh[0]+1)*(mesh[1]+1)))],
                 # (i+1, j+1, k+1)
-                verts[(i+1)+(j+1)*(self.mesh_size[0])+(j+1)+((k+1)*((
-                    self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
+                verts[(i+1)+(j+1)*(mesh[0])+(j+1)+((k+1)*((
+                    mesh[0]+1)*(mesh[1]+1)))],
                 # (i, j+1, k+1)
-                verts[(i)+(j+1)*(self.mesh_size[0])+(j+1)+((k+1)*((
-                    self.mesh_size[0]+1)*(self.mesh_size[1]+1)))]]
+                verts[(i)+(j+1)*(mesh[0])+(j+1)+((k+1)*((
+                    mesh[0]+1)*(mesh[1]+1)))]]
 
         return hexa
 
@@ -225,7 +208,8 @@ class StructuredUpscalingMethods:
                                   self.primal_ids[0]):
 
                     hexa = self._create_hexa(i, j, k,
-                                             self.create_fine_vertices())
+                                             self.create_fine_vertices(),
+                                             self.mesh_size)
                     el = self.mb.create_element(types.MBHEX, hexa)
 
                     self.mb.tag_set_data(self.gid_tag, el, cur_id)
@@ -382,18 +366,24 @@ class StructuredUpscalingMethods:
                                                          primal))
 
     def coarse_grid(self):
+        print self.mesh_size
+        fine_grid = self.mb.get_entities_by_type(self.root_set, types.MBHEX)
+        self.mb.delete_entities(fine_grid)
 
-        dim = self._coarse_dims(self.mesh_size, self.coarse_ratio)
-        total_size_coarse = self.block_coarse_coords(self.mesh_size,
-                                                     self.block_size,
-                                                     self.coarse_ratio)
+
+        dim = self._coarse_dims()
+        # This bypass is not the best approach. The function fails on reading
+        # mesh_size. Somehow it's being overwritten
+        self.bypass = self.get_block_size_coarse()
         cur_id = 0
+
         for k in xrange(dim[2]):
             print "{0} / {1}".format(k + 1, dim[2])
             for j in xrange(dim[1]):
                 for i in xrange(dim[0]):
 
-                    hexa = self._create_hexa(i, j, k, total_size_coarse)
+                    hexa = self._create_hexa(i, j, k,
+                                             self.create_coarse_vertices(), dim)
                     el = self.mb.create_element(types.MBHEX, hexa)
 
         # Assign coarse scale properties

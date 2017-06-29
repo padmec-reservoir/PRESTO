@@ -64,7 +64,7 @@ class Preprocessor(object):
 
         if self.method == "Flow based":
             pass
-
+        
         print "Generating coarse scale grid..."
         t0 = time.time()
         self.SUM.coarse_grid()
