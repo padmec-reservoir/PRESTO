@@ -11,7 +11,7 @@ class StructuredUpscalingMethods:
     ----------
     coarse_ratio: List or array of integers
         List or array containing three values indicating the coarsening ratio
-        of the mesh in x, y and z.
+        of the mesh in x, y and z directions.
         mesh_size: List or array of integers
             List or array containing three values indicating the mesh size
             (number of fine elements) of the mesh in x, y and z.
@@ -20,7 +20,6 @@ class StructuredUpscalingMethods:
             increments of vertex coordinates in x, y and z.
         """
     def __init__(self, coarse_ratio, mesh_size, block_size, moab):
-        # TODO Should go on Common
 
         self.coarse_ratio = coarse_ratio
         self.mesh_size = mesh_size
@@ -48,8 +47,8 @@ class StructuredUpscalingMethods:
         self.root_set = self.mb.get_root_set()
         self.mesh_topo_util = topo_util.MeshTopoUtil(self.mb)
 
-    def _block_size_coarse(self, mesh_size, block_size, coarse_ratio):
-        # Should go on Common
+    def block_coarse_coords(self, mesh_size, block_size, coarse_ratio):
+        # TODO: - Should go on Common
 
         total_size = np.asarray(self.mesh_size, dtype='int32') * np.asarray(
             self.block_size, dtype='float64')
@@ -63,27 +62,38 @@ class StructuredUpscalingMethods:
                 for self.mesh_size[dim] in np.arange(mesh_size_coarse[dim],
                                                      dtype='int32')])
             self.block_size_coarse[dim].append(total_size[dim])
-        return self.block_size_coarse
+
+        coarse_coords = np.array([
+            (i, j, k)
+            for k in (np.array(self.block_size_coarse[2], dtype='float64'))
+            for j in (np.array(self.block_size_coarse[1], dtype='float64'))
+            for i in (np.array(self.block_size_coarse[0], dtype='float64'))
+            ])
+
+        return self.mb.create_vertices(coarse_coords.flatten())
 
     def _coarse_dims(self, mesh_size, coarse_ratio):
-        # TODO Should go on Common
+        # TODO: - Should go on Common
 
         mesh_size_coarse = np.asarray(
             self.mesh_size, dtype='int32') // np.asarray(
                 self.coarse_ratio, dtype='int32')
         return mesh_size_coarse
 
-    def coarse_coords():
-        # TODO Should go on Common
+    def create_coarse_verts(self):
+        # TODO: - Should go on Common
 
         coarse_coords = np.array([
-            (i, j, k) for k in (np.array(block_size_z_coarse, dtype='float64'))
-            for j in (np.array(block_size_y_coarse, dtype='float64'))
-            for i in (np.array(block_size_x_coarse, dtype='float64'))
-        ])
+            (i, j, k)
+            for k in (np.array(self.block_size_coarse[2], dtype='float64'))
+            for j in (np.array(self.block_size_coarse[1], dtype='float64'))
+            for i in (np.array(self.block_size_coarse[0], dtype='float64'))
+            ])
+
+        return self.mb.create_vertices(coarse_coords.flatten())
 
     def calculate_primal_ids(self):
-        # TODO Should go on Common
+        # TODO: - Should go on Common
 
         for dim in range(0, 3):
             self.primal_ids.append(
@@ -105,38 +115,31 @@ class StructuredUpscalingMethods:
                     dim] // self.coarse_ratio[dim] * self.coarse_ratio[dim]]
                                         + new_primal[dim])
 
-
-
     def create_fine_vertices(self):
-        # TODO Should go on Common
+        # TODO: - Should go on Common
 
-        max_mesh_size = max(
-            self.mesh_size[2]*self.block_size[2],
-            self.mesh_size[1]*self.block_size[1],
-            self.mesh_size[0]*self.block_size[0])
+        coords = np.array([
+            (i, j, k) for k in (np.arange(self.mesh_size[2]+1,
+                                          dtype='float64')*self.block_size[2])
+            for j in (np.arange(self.mesh_size[1] + 1,
+                                dtype='float64')*self.block_size[1])
+            for i in (np.arange(self.mesh_size[0] + 1,
+                                dtype='float64')*self.block_size[0])
+        ], dtype='float64')
 
-        coords = np.array([(i, j, k)
-                           for k in (
-                               np.arange(
-                                   self.mesh_size[2]+1, dtype='float64') *
-                               self.block_size[2]/max_mesh_size)
-                           for j in (
-                               np.arange(
-                                   self.mesh_size[1]+1, dtype='float64') *
-                               self.block_size[1]/max_mesh_size)
-                           for i in (
-                               np.arange(
-                                   self.mesh_size[0]+1, dtype='float64') *
-                               self.block_size[0]/max_mesh_size)
-                           ], dtype='float64')
-        self.verts = self.mb.create_vertices(coords.flatten())
+        return self.mb.create_vertices(coords.flatten())
 
     def create_tags(self):
-        # TODO Should go on Common (?)
+        # TODO: - Should go on Common (?)
 
         self.gid_tag = self.mb.tag_get_handle(
             "GLOBAL_ID", 1, types.MB_TYPE_INTEGER, types.MB_TAG_DENSE, True)
 
+        self.coarse_gid_tag = self.mb.tag_get_handle(
+            "GLOBAL_ID", 1, types.MB_TYPE_INTEGER, types.MB_TAG_DENSE, True)
+
+        # this will gide through the meshsets corresponding to coarse scale
+        # volumes
         self.primal_id_tag = self.mb.tag_get_handle(
             "PRIMAL_ID", 1, types.MB_TYPE_INTEGER, types.MB_TAG_SPARSE, True)
 
@@ -144,6 +147,7 @@ class StructuredUpscalingMethods:
             "PHI", 1, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
 
+        # tag handle for upscaling operation
         self.primal_phi_tag = self.mb.tag_get_handle(
             "PRIMAL_PHI", 1, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
@@ -152,10 +156,12 @@ class StructuredUpscalingMethods:
             "PERM", 9, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
 
+        # tag handle for upscaling operation
         self.primal_perm_tag = self.mb.tag_get_handle(
             "PRIMAL_PERM", 9, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
 
+        # either shoud go or put other directions..., I...
         self.abs_perm_x_tag = self.mb.tag_get_handle(
             "ABS_PERM_X", 1, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
@@ -172,45 +178,45 @@ class StructuredUpscalingMethods:
             "COLLOCATION_POINT", 1, types.MB_TYPE_HANDLE,
             types.MB_TAG_SPARSE, True)
 
-    def _create_hexa(self, i, j, k):
-        # TODO Should go on Common
-        # TODO: Refactor this (????????)
+    def _create_hexa(self, i, j, k,  verts):
+        # TODO: - Should go on Common
+        #       - Refactor this (????????)
                 # (i, j, k)
-        hexa = [self.verts[(i)+(j*(self.mesh_size[0]+1))+(k*((
+        hexa = [verts[(i)+(j*(self.mesh_size[0]+1))+(k*((
             self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
                 # (i+1, j, k)
-                self.verts[(i+1)+(j*(self.mesh_size[0]+1))+(k*((
+                verts[(i+1)+(j*(self.mesh_size[0]+1))+(k*((
                     self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
                 # (i+1, j+1, k)
-                self.verts[(i+1)+(j+1)*(self.mesh_size[0])+(j+1)+(k*((
+                verts[(i+1)+(j+1)*(self.mesh_size[0])+(j+1)+(k*((
                     self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
                 # (i, j+1, k)
-                self.verts[(i)+(j+1)*(self.mesh_size[0])+(j+1)+(k*((
+                verts[(i)+(j+1)*(self.mesh_size[0])+(j+1)+(k*((
                     self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
                 # (i, j, k+1)
-                self.verts[(i)+(j*(self.mesh_size[0]+1))+((k+1)*((
+                verts[(i)+(j*(self.mesh_size[0]+1))+((k+1)*((
                     self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
                 # (i+1, j, k+1)
-                self.verts[(i+1)+(j*(self.mesh_size[0]+1))+((k+1)*((
+                verts[(i+1)+(j*(self.mesh_size[0]+1))+((k+1)*((
                     self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
                 # (i+1, j+1, k+1)
-                self.verts[(i+1)+(j+1)*(self.mesh_size[0])+(j+1)+((k+1)*((
+                verts[(i+1)+(j+1)*(self.mesh_size[0])+(j+1)+((k+1)*((
                     self.mesh_size[0]+1)*(self.mesh_size[1]+1)))],
                 # (i, j+1, k+1)
-                self.verts[(i)+(j+1)*(self.mesh_size[0])+(j+1)+((k+1)*((
+                verts[(i)+(j+1)*(self.mesh_size[0])+(j+1)+((k+1)*((
                     self.mesh_size[0]+1)*(self.mesh_size[1]+1)))]]
 
         return hexa
 
     def create_fine_blocks_and_primal(self):
-        # TODO Should go on Common
+        # TODO: - Should go on Common
 
         cur_id = 0
         # Create fine grid
         for k, idz in zip(xrange(self.mesh_size[2]),
                           self.primal_ids[2]):
 
-            print "{0} / {1}".format(k, self.mesh_size[2])
+            print "{0} / {1}".format(k + 1, self.mesh_size[2])
 
             for j, idy in zip(xrange(self.mesh_size[1]),
                               self.primal_ids[1]):
@@ -218,7 +224,8 @@ class StructuredUpscalingMethods:
                 for i, idx in zip(xrange(self.mesh_size[0]),
                                   self.primal_ids[0]):
 
-                    hexa = self._create_hexa(i, j, k)
+                    hexa = self._create_hexa(i, j, k,
+                                             self.create_fine_vertices())
                     el = self.mb.create_element(types.MBHEX, hexa)
 
                     self.mb.tag_set_data(self.gid_tag, el, cur_id)
@@ -254,7 +261,7 @@ class StructuredUpscalingMethods:
             primal_id += 1
 
     def store_primal_adj(self):
-        # TODO Should go on Common
+        # TODO: - Should go on Common
 
         min_coarse_ids = np.array([0, 0, 0])
         max_coarse_ids = np.array([max(self.primal_ids[0]),
@@ -284,7 +291,7 @@ class StructuredUpscalingMethods:
             self.primal_adj[primal_id] = adj_ids
 
     def _get_block_by_ijk(self, i, j, k, n_i, n_j):
-        # TODO Should go on Common
+        # TODO: - Should go on Common
 
         """
         Track down the block from its (i,j,k) position.
@@ -301,7 +308,7 @@ class StructuredUpscalingMethods:
         return elem
 
     def read_phi(self):
-        # TODO Should go on Common
+        # TODO: - Should go on Common
 
         phi_values = []
         with open('spe_phi.dat') as phi:
@@ -310,7 +317,7 @@ class StructuredUpscalingMethods:
         self.phi_values = [float(val) for val in phi_values]
 
     def read_perm(self):
-        # TODO Should go on Common
+        # TODO: - Should go on Common
 
         perm_values = []
         # i = 0
@@ -322,6 +329,7 @@ class StructuredUpscalingMethods:
         self.perm_values = [float(val) for val in perm_values]
 
     def upscale_phi(self):
+        self.coarse_phi = []
         for primal_id, primal in self.primals.iteritems():
             # Calculate mean phi on primal
             fine_elems_in_primal = self.mb.get_entities_by_type(
@@ -334,11 +342,14 @@ class StructuredUpscalingMethods:
             self.mb.tag_set_data(self.primal_phi_tag, fine_elems_in_primal,
                                  np.repeat(primal_mean_phi, len(
                                      fine_elems_in_primal)))
+            self.coarse_phi.append(self.mb.tag_get_data(self.primal_phi_tag,
+                                                        primal))
 
     def upscale_perm_mean(self, average_method):
         self.average_method = average_method
+        perm = []
         primal_perm = {}
-        # perm = []
+        self.coarse_perm = []
         basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 
         for primal_id, primal in self.primals.iteritems():
@@ -350,62 +361,47 @@ class StructuredUpscalingMethods:
             primal_perm.update({eid: tensor.reshape(3, 3) for eid, tensor in
                                 zip(fine_elems_in_primal, fine_perm_values)
                                 })
-# fix this part to perform averaging in less code lines
+        # fix this part to perform averaging in less code lines
             for dim in range(0, 3):
-                self.perm.append([(np.dot(np.dot(primal_perm[elem_id],
-                                                 basis[dim]), basis[dim]))
-                                  for elem_id in fine_elems_in_primal])
+                perm.append([(np.dot(np.dot(primal_perm[elem_id],
+                                            basis[dim]), basis[dim]))
+                             for elem_id in fine_elems_in_primal])
                 if average_method == 'Arithmetic':
-                    primal_perm[dim] = np.mean(self.perm[dim])
+                    primal_perm[dim] = np.mean(perm[dim])
                 if average_method == 'Geometric':
                     primal_perm[dim] = np.prod(np.asarray(
-                        self.perm[dim]))**(1/len(np.asarray(self.perm[dim])))
+                        perm[dim]))**(1/len(np.asarray(perm[dim])))
                 if average_method == 'Harmonic':
                     primal_perm[dim] = len(np.asarray(
-                        self.perm[dim]))/sum(1/np.asarray(self.perm[dim]))
+                        perm[dim]))/sum(1/np.asarray(perm[dim]))
             self.mb.tag_set_data(self.primal_perm_tag, primal,
                                  [primal_perm[0], 0, 0,
                                   0, primal_perm[1], 0,
                                   0, 0, primal_perm[2]])
+            self.coarse_perm.append(self.mb.tag_get_data(self.primal_perm_tag,
+                                                         primal))
 
     def coarse_grid(self):
 
         dim = self._coarse_dims(self.mesh_size, self.coarse_ratio)
-
-        print self.mesh_size, self.block_size, self.coarse_ratio
-        total_size_coarse = self._block_size_coarse(self.mesh_size,
-                                                    self.block_size,
-                                                    self.coarse_ratio)
-        print total_size_coarse
+        total_size_coarse = self.block_coarse_coords(self.mesh_size,
+                                                     self.block_size,
+                                                     self.coarse_ratio)
+        cur_id = 0
         for k in xrange(dim[2]):
-
-            print round(float(k+1)/float(dim[2]) * 100, 2), ' %'
-
+            print "{0} / {1}".format(k + 1, dim[2])
             for j in xrange(dim[1]):
-
                 for i in xrange(dim[0]):
 
-                    hexa = self._create_hexa(i, j, k)
+                    hexa = self._create_hexa(i, j, k, total_size_coarse)
                     el = self.mb.create_element(types.MBHEX, hexa)
 
         # Assign coarse scale properties
-"""
-                    #Create TAG
-                    self.mb.tag_set_data(self.coarse_gid_tag,
-                                         el, cur_id)
-
+                    self.mb.tag_set_data(
+                        self.coarse_gid_tag, el, cur_id)
                     self.mb.tag_set_data(self.primal_phi_tag, el,
-                                         coarse_mean_phi[cur_id])
-
-        #How to assure information correctly assignment???
-
-
+                                         self.coarse_phi[cur_id])
                     self.mb.tag_set_data(self.primal_perm_tag, el,
-                                         [coarse_perm_xx[cur_id], 0, 0,
-                                                   0, coarse_perm_yy[cur_id], 0,
-                                                   0, 0, coarse_perm_zz[cur_id]])
+                                         self.coarse_perm[cur_id])
+                    self.coarse_elems.append(el)
                     cur_id += 1
-                    coarse_elems.append(el)
-
-"""
-    #    pass
