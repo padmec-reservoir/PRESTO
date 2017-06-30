@@ -12,7 +12,9 @@ If you are running on Docker you you should have pulled the image gpkc/elliptic.
 Start docker
 $ sudo systemctl start docker
 run docker as follows
-$ sudo docker run -v $PWD:/elliptic gpkc/elliptic bash -c "cd /elliptic; python -m elliptic.Preprocess <config>"
+$ sudo docker run -v $PWD:/elliptic gpkc/elliptic bash -c "cd /elliptic; python -m
+elliptic.Preprocess <config>"
 
 For example, under the upscale example folder, run the following command:
-$ sudo docker run -v $PWD:/elliptic gpkc/elliptic bash -c "cd /elliptic; python -m elliptic.Preprocess structured.cfg"
+$ sudo docker run -v $PWD:/elliptic gpkc/elliptic bash -c "cd /elliptic; python -m
+elliptic.Preprocess structured.cfg"
