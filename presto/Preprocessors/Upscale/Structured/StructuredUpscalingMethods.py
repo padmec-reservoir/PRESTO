@@ -59,12 +59,11 @@ class StructuredUpscalingMethods:
             block_size_coarse[dim].append(total_size[dim])
         return block_size_coarse
 
-
     def create_coarse_vertices(self):
         # TODO: - Should go on Common
 
         block_size_coarse = self.bypass
-        
+
         coarse_coords = np.array([
             (i, j, k)
             for k in (np.array(block_size_coarse[2], dtype='float64'))
@@ -101,8 +100,8 @@ class StructuredUpscalingMethods:
                     max(self.primal_ids[dim]) - 1,
                     len(new_primal[dim])).tolist()
                 self.primal_ids[dim] = (self.primal_ids[dim][:self.mesh_size[
-                    dim] // self.coarse_ratio[dim] * self.coarse_ratio[dim]]
-                                        + new_primal[dim])
+                    dim] // self.coarse_ratio[dim] * self.coarse_ratio[dim]] +
+                                        new_primal[dim])
 
     def create_fine_vertices(self):
         # TODO: - Should go on Common
@@ -240,6 +239,7 @@ class StructuredUpscalingMethods:
                             self.fine_to_primal_tag, el, primal)
 
         primal_id = 0
+        self.gid = []
         for primal in self.primals.values():
             self.mb.tag_set_data(self.primal_id_tag, primal, primal_id)
             primal_id += 1
@@ -313,7 +313,6 @@ class StructuredUpscalingMethods:
         self.perm_values = [float(val) for val in perm_values]
 
     def upscale_phi(self):
-        self.coarse_phi = []
         for primal_id, primal in self.primals.iteritems():
             # Calculate mean phi on primal
             fine_elems_in_primal = self.mb.get_entities_by_type(
@@ -326,14 +325,11 @@ class StructuredUpscalingMethods:
             self.mb.tag_set_data(self.primal_phi_tag, fine_elems_in_primal,
                                  np.repeat(primal_mean_phi, len(
                                      fine_elems_in_primal)))
-            self.coarse_phi.append(self.mb.tag_get_data(self.primal_phi_tag,
-                                                        primal))
 
     def upscale_perm_mean(self, average_method):
         self.average_method = average_method
         perm = []
         primal_perm = {}
-        self.coarse_perm = []
         basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 
         for primal_id, primal in self.primals.iteritems():
@@ -362,14 +358,13 @@ class StructuredUpscalingMethods:
                                  [primal_perm[0], 0, 0,
                                   0, primal_perm[1], 0,
                                   0, 0, primal_perm[2]])
-            self.coarse_perm.append(self.mb.tag_get_data(self.primal_perm_tag,
-                                                         primal))
 
     def coarse_grid(self):
-        print self.mesh_size
+        # This will not delete primal grid information prevously calculated,
+        # since it is only looking for elements within the root_set that are
+        # MBHEX, whilst all props from primal grid are stored as meshsets
         fine_grid = self.mb.get_entities_by_type(self.root_set, types.MBHEX)
         self.mb.delete_entities(fine_grid)
-
 
         dim = self._coarse_dims()
         # This bypass is not the best approach. The function fails on reading
@@ -383,15 +378,20 @@ class StructuredUpscalingMethods:
                 for i in xrange(dim[0]):
 
                     hexa = self._create_hexa(i, j, k,
-                                             self.create_coarse_vertices(), dim)
+                                             self.create_coarse_vertices(),
+                                             dim)
                     el = self.mb.create_element(types.MBHEX, hexa)
 
-        # Assign coarse scale properties
+        # Assign coarse scale properties previously calculated
                     self.mb.tag_set_data(
                         self.coarse_gid_tag, el, cur_id)
                     self.mb.tag_set_data(self.primal_phi_tag, el,
-                                         self.coarse_phi[cur_id])
+                                         self.mb.tag_get_data(
+                                             self.primal_phi_tag,
+                                             self.primals[(i, j, k)]))
                     self.mb.tag_set_data(self.primal_perm_tag, el,
-                                         self.coarse_perm[cur_id])
+                                         self.mb.tag_get_data(
+                                             self.primal_perm_tag,
+                                             self.primals[(i, j, k)]))
                     self.coarse_elems.append(el)
                     cur_id += 1
