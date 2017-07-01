@@ -3,7 +3,9 @@
   <img src="https://cdn.rawgit.com/padmec-reservoir/PRESTO/master/PRESTO.png" width="700px"/>
 </p>
 
-# PRESTO
+---
+
+# Description
 **PRESTO**: The Python REservoir Simulation Toolbox for flow simulation and diagnostics in porous media. PRESTO Currently deals with single phase fluid flow in highly heterogeneous and anisitropic porous media in two or three dimensions. So far, PRESTO's main features are:
 * Preprocessor for threedimensional Classic Multiscale simulation;
 * Some techniques for upscaling reservoir properties;
