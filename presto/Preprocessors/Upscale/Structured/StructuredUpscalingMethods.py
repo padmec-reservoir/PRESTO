@@ -1,5 +1,4 @@
 import numpy as np
-from pymoab import core
 from pymoab import types
 from pymoab import topo_util
 
@@ -44,6 +43,58 @@ class StructuredUpscalingMethods:
         self.mb = moab
         self.root_set = self.mb.get_root_set()
         self.mesh_topo_util = topo_util.MeshTopoUtil(self.mb)
+
+    def create_tags(self):
+        # TODO: - Should go on Common (?)
+
+        self.gid_tag = self.mb.tag_get_handle(
+            "GLOBAL_ID", 1, types.MB_TYPE_INTEGER,
+            types.MB_TAG_DENSE, True)
+
+        self.coarse_gid_tag = self.mb.tag_get_handle(
+            "PRIMAL_GLOBAL_ID", 1, types.MB_TYPE_INTEGER,
+            types.MB_TAG_DENSE, True)
+
+        # this will gide through the meshsets corresponding to coarse scale
+        # volumes
+        self.primal_id_tag = self.mb.tag_get_handle(
+            "PRIMAL_ID", 1, types.MB_TYPE_INTEGER,
+            types.MB_TAG_SPARSE, True)
+
+        self.phi_tag = self.mb.tag_get_handle(
+            "PHI", 1, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
+
+        # tag handle for upscaling operation
+        self.primal_phi_tag = self.mb.tag_get_handle(
+            "PRIMAL_PHI", 1, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
+
+        self.perm_tag = self.mb.tag_get_handle(
+            "PERM", 9, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
+
+        # tag handle for upscaling operation
+        self.primal_perm_tag = self.mb.tag_get_handle(
+            "PRIMAL_PERM", 9, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
+
+        # either shoud go or put other directions..., I...
+        self.abs_perm_x_tag = self.mb.tag_get_handle(
+            "ABS_PERM_X", 1, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
+
+        self.fine_to_primal_tag = self.mb.tag_get_handle(
+            "FINE_TO_PRIMAL", 1, types.MB_TYPE_HANDLE,
+            types.MB_TAG_SPARSE, True)
+
+        self.primal_adj_tag = self.mb.tag_get_handle(
+            "PRIMAL_ADJ", 1, types.MB_TYPE_HANDLE,
+            types.MB_TAG_SPARSE, True)
+
+        self.collocation_point_tag = self.mb.tag_get_handle(
+            "COLLOCATION_POINT", 1, types.MB_TYPE_HANDLE,
+            types.MB_TAG_SPARSE, True)
 
     def get_block_size_coarse(self):
         block_size_coarse = []
@@ -115,55 +166,6 @@ class StructuredUpscalingMethods:
         ], dtype='float64')
         return self.mb.create_vertices(coords.flatten())
 
-    def create_tags(self):
-        # TODO: - Should go on Common (?)
-
-        self.gid_tag = self.mb.tag_get_handle(
-            "GLOBAL_ID", 1, types.MB_TYPE_INTEGER, types.MB_TAG_DENSE, True)
-
-        self.coarse_gid_tag = self.mb.tag_get_handle(
-            "GLOBAL_ID", 1, types.MB_TYPE_INTEGER, types.MB_TAG_DENSE, True)
-
-        # this will gide through the meshsets corresponding to coarse scale
-        # volumes
-        self.primal_id_tag = self.mb.tag_get_handle(
-            "PRIMAL_ID", 1, types.MB_TYPE_INTEGER, types.MB_TAG_SPARSE, True)
-
-        self.phi_tag = self.mb.tag_get_handle(
-            "PHI", 1, types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE, True)
-
-        # tag handle for upscaling operation
-        self.primal_phi_tag = self.mb.tag_get_handle(
-            "PRIMAL_PHI", 1, types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE, True)
-
-        self.perm_tag = self.mb.tag_get_handle(
-            "PERM", 9, types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE, True)
-
-        # tag handle for upscaling operation
-        self.primal_perm_tag = self.mb.tag_get_handle(
-            "PRIMAL_PERM", 9, types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE, True)
-
-        # either shoud go or put other directions..., I...
-        self.abs_perm_x_tag = self.mb.tag_get_handle(
-            "ABS_PERM_X", 1, types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE, True)
-
-        self.fine_to_primal_tag = self.mb.tag_get_handle(
-            "FINE_TO_PRIMAL", 1, types.MB_TYPE_HANDLE,
-            types.MB_TAG_SPARSE, True)
-
-        self.primal_adj_tag = self.mb.tag_get_handle(
-            "PRIMAL_ADJ", 1, types.MB_TYPE_HANDLE,
-            types.MB_TAG_SPARSE, True)
-
-        self.collocation_point_tag = self.mb.tag_get_handle(
-            "COLLOCATION_POINT", 1, types.MB_TYPE_HANDLE,
-            types.MB_TAG_SPARSE, True)
-
     def _create_hexa(self, i, j, k,  verts, mesh):
         # TODO: - Should go on Common
         #       - Refactor this (????????)
@@ -196,7 +198,7 @@ class StructuredUpscalingMethods:
 
     def create_fine_blocks_and_primal(self):
         # TODO: - Should go on Common
-
+        fine_vertices = self.create_fine_vertices()
         cur_id = 0
         # Create fine grid
         for k, idz in zip(xrange(self.mesh_size[2]),
@@ -209,7 +211,7 @@ class StructuredUpscalingMethods:
                                   self.primal_ids[0]):
 
                     hexa = self._create_hexa(i, j, k,
-                                             self.create_fine_vertices(),
+                                             fine_vertices,
                                              self.mesh_size)
                     el = self.mb.create_element(types.MBHEX, hexa)
 
@@ -322,7 +324,7 @@ class StructuredUpscalingMethods:
         self.perm_values = [float(val) for val in perm_values]
 
     def upscale_phi(self):
-        for primal_id, primal in self.primals.iteritems():
+        for _, primal in self.primals.iteritems():
             # Calculate mean phi on primal
             fine_elems_in_primal = self.mb.get_entities_by_type(
                 primal, types.MBHEX)
@@ -338,24 +340,20 @@ class StructuredUpscalingMethods:
 
     def upscale_perm_mean(self, average_method):
         self.average_method = average_method
-        perm = []
+
         primal_perm = {}
         basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
-
+        perm = []
         for primal_id, primal in self.primals.iteritems():
 
             fine_elems_in_primal = self.mb.get_entities_by_type(
                 primal, types.MBHEX)
             fine_perm_values = self.mb.tag_get_data(self.perm_tag,
                                                     fine_elems_in_primal)
-            primal_perm.update({eid: tensor.reshape(3, 3) for eid, tensor in
-                                zip(fine_elems_in_primal, fine_perm_values)
-                                })
-        # fix this part to perform averaging in less code lines
+            primal_perm = [tensor.reshape(3, 3) for tensor in fine_perm_values]
             for dim in range(0, 3):
-                perm.append([(np.dot(np.dot(primal_perm[elem_id],
-                                            basis[dim]), basis[dim]))
-                             for elem_id in fine_elems_in_primal])
+                perm = [(np.dot(np.dot(tensor, basis[dim]), basis[dim]))
+                        for tensor in primal_perm]
                 if average_method == 'Arithmetic':
                     primal_perm[dim] = np.mean(perm[dim])
                 if average_method == 'Geometric':
@@ -364,6 +362,9 @@ class StructuredUpscalingMethods:
                 if average_method == 'Harmonic':
                     primal_perm[dim] = len(np.asarray(
                         perm[dim]))/sum(1/np.asarray(perm[dim]))
+                else:
+                    print "Choose either Arithmetic, Geometric out Harmonic."
+                    exit()
             self.mb.tag_set_data(self.primal_perm_tag, primal,
                                  [primal_perm[0], 0, 0,
                                   0, primal_perm[1], 0,
@@ -380,6 +381,10 @@ class StructuredUpscalingMethods:
         pass
 
     def coarse_grid(self):
+        # We should includ a swithc for either printing coarse grid or fine
+        # grid here that is fedy by the .cfg file.
+
+        # if self.grid == 'coarse'
         """
         This will not delete primal grid information prevously calculated,
         since it is only looking for elements within the root_set that are
@@ -387,7 +392,7 @@ class StructuredUpscalingMethods:
         """
         fine_grid = self.mb.get_entities_by_type(self.root_set, types.MBHEX)
         self.mb.delete_entities(fine_grid)
-
+        coarse_vertices = self.create_coarse_vertices()
         coarse_dims = self._coarse_dims()
         cur_id = 0
         for k in xrange(coarse_dims[2]):
@@ -396,7 +401,7 @@ class StructuredUpscalingMethods:
                 for i in xrange(coarse_dims[0]):
 
                     hexa = self._create_hexa(i, j, k,
-                                             self.create_coarse_vertices(),
+                                             coarse_vertices,
                                              coarse_dims)
                     el = self.mb.create_element(types.MBHEX, hexa)
 
@@ -412,4 +417,4 @@ class StructuredUpscalingMethods:
                                              self.primal_perm_tag,
                                              self.primals[(i, j, k)]))
                     self.coarse_elems.append(el)
-cur_id += 1
+                    cur_id += 1

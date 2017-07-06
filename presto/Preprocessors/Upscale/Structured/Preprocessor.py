@@ -21,6 +21,9 @@ class Preprocessor(object):
         self.method = self.structured_configs['method']
         if self.method == "Average":
             self.average = self.structured_configs['average']
+        else:
+            print "Choose either Flow-based or Average."
+            exit()
 
     def run(self, moab):
 
