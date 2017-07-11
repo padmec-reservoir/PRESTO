@@ -5,6 +5,9 @@
 
 ---
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/06559ba85a114f16807ae274110e84c8)](https://www.codacy.com/app/PADMEC/PRESTO?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=padmec-reservoir/PRESTO&amp;utm_campaign=Badge_Grade)
+[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/gpkc/ELLIPTIc/master/LICENSE)
+
 # Description
 **PRESTO**: The Python REservoir Simulation Toolbox for flow simulation and diagnostics in porous media. PRESTO Currently deals with single phase fluid flow in highly heterogeneous and anisitropic porous media in two or three dimensions. So far, PRESTO's main features are:
 * Preprocessor for threedimensional Classic Multiscale simulation;
