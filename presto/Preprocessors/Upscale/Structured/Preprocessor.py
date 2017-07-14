@@ -21,6 +21,8 @@ class Preprocessor(object):
         self.method = self.structured_configs['method']
         if self.method == "Average":
             self.average = self.structured_configs['average']
+        elif self.method == "Flow-based":
+            self.average = self.structured_configs['average']
         else:
             print "Choose either Flow-based or Average."
             exit()
@@ -65,10 +67,14 @@ class Preprocessor(object):
             self.SUM.upscale_perm_mean('Arithmetic')
             print "took {0}".format(time.time()-t0), "seconds..."
 
-        if self.method == "Flow based":
-            pass
+        if self.method == "Flow-based":
+            print "Setting local boundaries..."
+            t0 = time.time()
+            self.SUM.set_local_problem()
+            print "took {0}".format(time.time()-t0), "seconds..."
 
         print "Generating coarse scale grid..."
         t0 = time.time()
-        self.SUM.coarse_grid()
+        self.SUM.set_local_problem()
+        # self.SUM.coarse_grid()
         print "took {0}".format(time.time()-t0), "seconds..."

@@ -65,6 +65,10 @@ class StructuredUpscalingMethods:
             "PHI", 1, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
 
+        self.boundary_tag = self.mb.tag_get_handle(
+            "LOCAL BOUNDARY CONDITIONS", 1, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
+
         # tag handle for upscaling operation
         self.primal_phi_tag = self.mb.tag_get_handle(
             "PRIMAL_PHI", 1, types.MB_TYPE_DOUBLE,
@@ -333,15 +337,9 @@ class StructuredUpscalingMethods:
             primal_mean_phi = fine_elems_phi_values.mean()
             # Store mean phi on the primal meshset and internal elements
             self.mb.tag_set_data(self.primal_phi_tag, primal, primal_mean_phi)
-            # 336 is only used for visualization. Useless
-            self.mb.tag_set_data(self.primal_phi_tag, fine_elems_in_primal,
-                                 np.repeat(primal_mean_phi, len(
-                                     fine_elems_in_primal)))
 
     def upscale_perm_mean(self, average_method):
         self.average_method = average_method
-
-        primal_perm = {}
         basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
         perm = []
         for primal_id, primal in self.primals.iteritems():
@@ -356,14 +354,14 @@ class StructuredUpscalingMethods:
                         for tensor in primal_perm]
                 if average_method == 'Arithmetic':
                     primal_perm[dim] = np.mean(perm[dim])
-                if average_method == 'Geometric':
+                elif average_method == 'Geometric':
                     primal_perm[dim] = np.prod(np.asarray(
                         perm[dim]))**(1/len(np.asarray(perm[dim])))
-                if average_method == 'Harmonic':
+                elif average_method == 'Harmonic':
                     primal_perm[dim] = len(np.asarray(
                         perm[dim]))/sum(1/np.asarray(perm[dim]))
                 else:
-                    print "Choose either Arithmetic, Geometric out Harmonic."
+                    print "Choose either Arithmetic, Geometric or Harmonic."
                     exit()
             self.mb.tag_set_data(self.primal_perm_tag, primal,
                                  [primal_perm[0], 0, 0,
@@ -371,9 +369,30 @@ class StructuredUpscalingMethods:
                                   0, 0, primal_perm[2]])
 
     def set_local_problem(self):  # Other parameters might go in as an input
+        coarse_dims = self._coarse_dims()
+        for k in xrange(coarse_dims[2]):
+            print "{0} / {1}".format(k + 1, coarse_dims[2])
+            for j in xrange(coarse_dims[1]):
+                for i in xrange(coarse_dims[0]):
+                    """
+                    fine_elems_in_primal = self.mb.get_entities_by_type(
+                        self.primals[(i, j, k)], types.MBHEX)
+                    self.mb.tag_get_data(self.gid_tag, fine_elems_in_primal)
+                    if self._get_elem_by_ijk((0, j*self.coarse_ratio[1],
+                                              k*self.coarse_ratio[2]) ==
+                    self.mb.tag_get_data(self.gid_tag, fine_elems_in_primal):
+                        print "boundary"
 
-        pass
-
+                    if i == 0:
+                        self.mb.tag_set_data(self.boundary_tag,
+                                             fine_elems_in_primal, 1.0)
+                        print fine_elems_in_primal
+                    if i == coarse_dims[0] - 1:
+                        self.mb.tag_set_data(self.boundary_tag,
+                                             fine_elems_in_primal, 1.0)
+                        print fine_elems_in_primal
+                    self.coarse_elems.append(el)
+                    """
     def upscale_perm_flow_based(self):
         # TODO: - matrix assembly;
         #       - boundaries for experiments in each directions
@@ -416,5 +435,9 @@ class StructuredUpscalingMethods:
                                          self.mb.tag_get_data(
                                              self.primal_perm_tag,
                                              self.primals[(i, j, k)]))
+                    if i == 0:
+                        self.mb.tag_set_data(self.boundary_tag, el, 1.0)
+                    if i == coarse_dims[0] - 1:
+                        self.mb.tag_set_data(self.boundary_tag, el, 1.0)
                     self.coarse_elems.append(el)
                     cur_id += 1
