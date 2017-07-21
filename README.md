@@ -5,6 +5,7 @@
 
 ---
 
+[![Build Status](https://travis-ci.org/padmec-reservoir/PRESTO.svg?branch=master)](https://travis-ci.org/padmec-reservoir/PRESTO)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/06559ba85a114f16807ae274110e84c8)](https://www.codacy.com/app/PADMEC/PRESTO?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=padmec-reservoir/PRESTO&amp;utm_campaign=Badge_Grade)
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/gpkc/ELLIPTIc/master/LICENSE)
 
