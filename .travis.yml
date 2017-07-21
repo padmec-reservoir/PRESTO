@@ -8,7 +8,7 @@ python:
 # - install (instalação de quaisquer pacotes/plataformas necessários para teste)
 # - script (script a ser testado)
 
-# notifications: # Configurar depois!
+# notifications: # Lembrar de configurar depois!
   # slack:
 
 services:
