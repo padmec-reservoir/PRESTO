@@ -17,7 +17,7 @@ services:
 before_install:
   - docker build -t presto docker/presto/ # Inicialização da imagem do PRESTO
 
- install:
+install:
   - pip install python-coveralls colorlog # Utilidade?
 # The following command will install the latest version of a module and its
 # dependencies from the Python Packaging Index
@@ -28,19 +28,19 @@ script:
   # /bin/bash?
 
 after_success: # Configurar depois! Dúvidas!
-    - docker cp `docker ps -l -q`:/home/scientific/PRESTO/.coverage .coverage.docker
-    # The docker cp utility copies the contents of SRC_PATH to the DEST_PATH
+  - docker cp `docker ps -l -q`:/home/scientific/PRESTO/.coverage .coverage.docker
+  # The docker cp utility copies the contents of SRC_PATH to the DEST_PATH
 
-    - coverage combine
-    # Coverage.py is a tool for measuring code coverage of Python programs.
-    # It monitors your program, noting which parts of the code have been
-    # executed, then analyzes the source to identify code that could have been
-    # executed but was not
-    # combine command: Combine together a number of data files.
+  - coverage combine
+  # Coverage.py is a tool for measuring code coverage of Python programs.
+  # It monitors your program, noting which parts of the code have been
+  # executed, then analyzes the source to identify code that could have been
+  # executed but was not
+  # combine command: Combine together a number of data files.
 
-    # - coveralls
-    # Coveralls is a web service to help you track your code coverage over time,
-    # and ensure that all your new code is fully covered
+  # - coveralls
+  # Coveralls is a web service to help you track your code coverage over time,
+  # and ensure that all your new code is fully covered
 
-     - docker tag padmec/presto
-    # Create a tag TARGET_IMAGE that refers to SOURCE_IMAGE
+  - docker tag padmec/presto
+  # Create a tag TARGET_IMAGE that refers to SOURCE_IMAGE
