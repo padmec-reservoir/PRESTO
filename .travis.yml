@@ -1,33 +1,27 @@
-sudo: required # a sudo enabled, full VM per build
+sudo: required
 
-language: python # Os códigos estão escritos em python
+language: python
 python:
   - "2.7"
-
-# Script dividido em dois passos:
-# - install (instalação de quaisquer pacotes/plataformas necessários para teste)
-# - script (script a ser testado)
 
 # notifications: # Lembrar de configurar depois!
   # slack:
 
 services:
-  - docker # Inicialização do docker apra a realização do teste
+  - docker
 
 before_install:
   - docker build -t presto docker/presto/ # Inicialização da imagem do PRESTO
 
 install:
-  - pip install python-coveralls colorlog # Utilidade?
+  - pip install python-coveralls colorlog
 # The following command will install the latest version of a module and its
 # dependencies from the Python Packaging Index
 
 script:
   - docker run presto /bin/bash -c "python setup.py test"
-  # Comando incompleto
-  # /bin/bash?
 
-after_success: # Configurar depois! Dúvidas!
+after_success:
   - docker cp `docker ps -l -q`:/home/scientific/PRESTO/.coverage .coverage.docker
   # The docker cp utility copies the contents of SRC_PATH to the DEST_PATH
 
@@ -36,9 +30,8 @@ after_success: # Configurar depois! Dúvidas!
   # It monitors your program, noting which parts of the code have been
   # executed, then analyzes the source to identify code that could have been
   # executed but was not
-  # combine command: Combine together a number of data files.
 
-  # - coveralls
+  # - coveralls  # Lembrar de configurar depois!
   # Coveralls is a web service to help you track your code coverage over time,
   # and ensure that all your new code is fully covered
 
