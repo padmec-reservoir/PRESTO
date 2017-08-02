@@ -21,7 +21,11 @@ class Preprocessor(object):
         self.method = self.structured_configs['method']
         if self.method == "Average":
             self.average = self.structured_configs['average']
-        else:
+            if self.average not in ('Arithmetic', 'Geometric',
+                                      'Harmonic'):
+                print "Choose either Arithmetic, Geometric or Harmonic."
+                exit()
+        elif self.method != 'Flow-based':
             print "Choose either Flow-based or Average."
             exit()
 
@@ -47,7 +51,7 @@ class Preprocessor(object):
         self.SUM.read_perm()
         print "took {0}".format(time.time() - t0), "seconds..."
 
-        print "Creating fine blocks and associating to primal..."
+        print "Associating fine volumes to primal coarse grid..."
         t0 = time.time()
         self.SUM.create_fine_blocks_and_primal()
         print "took {0}".format(time.time()-t0), "seconds..."
@@ -62,13 +66,14 @@ class Preprocessor(object):
         if self.method == "Average":
             print "{0}".format(self.average), "mean..."
             t0 = time.time()
-            self.SUM.upscale_perm_mean('Arithmetic')
+            self.SUM.upscale_perm_mean(self.average)
             print "took {0}".format(time.time()-t0), "seconds..."
 
-        if self.method == "Flow based":
-            pass
+        if self.method == "Flow-based":
+            self.SUM.set_local_problem()
 
         print "Generating coarse scale grid..."
+        exit()
         t0 = time.time()
         self.SUM.coarse_grid()
         print "took {0}".format(time.time()-t0), "seconds..."

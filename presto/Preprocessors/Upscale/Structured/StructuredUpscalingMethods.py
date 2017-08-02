@@ -282,21 +282,22 @@ class StructuredUpscalingMethods:
 
             self.primal_adj[primal_id] = adj_ids
 
-    def _get_block_by_ijk(self, i, j, k, n_i, n_j):
+    def _get_block_by_ijk(self, i, j, k):
         # TODO: - Should go on Common
         #       - Should reformulate to get self.mesh_size instead of input
 
         """
         Track down the block from its (i,j,k) position.
         """
-        block = (k)*n_i*n_j+((i)+(j)*n_i)
+        block = (k)*self.mesh_size[0]*self.mesh_size[1]+(
+            (i)+(j)*self.mesh_size[0])
         return block
 
     def _get_elem_by_ijk(self, ijk):
         # TODO Should go on Common
 
         block_id = self._get_block_by_ijk(
-            ijk[0], ijk[1], ijk[2], self.mesh_size[0], self.mesh_size[1])
+            ijk[0], ijk[1], ijk[2])
         elem = self.elems[block_id]
         return elem
 
@@ -362,17 +363,68 @@ class StructuredUpscalingMethods:
                 if average_method == 'Harmonic':
                     primal_perm[dim] = len(np.asarray(
                         perm[dim]))/sum(1/np.asarray(perm[dim]))
-                else:
-                    print "Choose either Arithmetic, Geometric out Harmonic."
-                    exit()
             self.mb.tag_set_data(self.primal_perm_tag, primal,
                                  [primal_perm[0], 0, 0,
                                   0, primal_perm[1], 0,
                                   0, 0, primal_perm[2]])
 
-    def set_local_problem(self):  # Other parameters might go in as an input
+    def _primal_centroid(self, setid):
+        coarse_sums = np.array(
+            [[0, 0, 0],
+             [0, 0, 1],
+             [0, 1, 0],
+             [0, 1, 1],
+             [1, 0, 0],
+             [1, 0, 1],
+             [1, 1, 0],
+             [1, 1, 1]]
+        )
+        primal_centroid = (
+            (np.asarray(setid) + coarse_sums[0]) *
+            np.array([self.coarse_ratio[0],
+                      self.coarse_ratio[1],
+                      self.coarse_ratio[2]]) +
+            (np.asarray(setid) + coarse_sums[1]) *
+            np.array([self.coarse_ratio[0],
+                      self.coarse_ratio[1],
+                      self.coarse_ratio[2]]) +
+            (np.asarray(setid) + coarse_sums[2]) *
+            np.array([self.coarse_ratio[0],
+                      self.coarse_ratio[1],
+                      self.coarse_ratio[2]]) +
+            (np.asarray(setid) + coarse_sums[3]) *
+            np.array([self.coarse_ratio[0],
+                      self.coarse_ratio[1],
+                      self.coarse_ratio[2]]) +
+            (np.asarray(setid) + coarse_sums[4]) *
+            np.array([self.coarse_ratio[0],
+                      self.coarse_ratio[1],
+                      self.coarse_ratio[2]]) +
+            (np.asarray(setid) + coarse_sums[5]) *
+            np.array([self.coarse_ratio[0],
+                      self.coarse_ratio[1],
+                      self.coarse_ratio[2]]) +
+            (np.asarray(setid) + coarse_sums[6]) *
+            np.array([self.coarse_ratio[0],
+                      self.coarse_ratio[1],
+                      self.coarse_ratio[2]]) +
+            (np.asarray(setid) + coarse_sums[7]) *
+            np.array([self.coarse_ratio[0],
+                      self.coarse_ratio[1],
+                      self.coarse_ratio[2]]))
 
-        pass
+        primal_centroid = primal_centroid // 8
+        return primal_centroid
+
+    def set_local_problem(self):  # Other parameters might go in as an input
+        # create specific tags for setting local problems
+        face_x_id_left = [self._get_block_by_ijk(0, j, k) for j in xrange(self.mesh_size[1]) for k in xrange(self.mesh_size[1])]
+        for primal_id, primal in self.primals.iteritems():
+            fine_elems_in_primal = self.mb.get_entities_by_type(
+                primal, types.MBHEX)
+            if any face_x_id_left in self.mb.tag_get_data(self.gid_tag, fine_elems_in_primal):
+                print face_x_id_left
+
 
     def upscale_perm_flow_based(self):
         # TODO: - matrix assembly;
