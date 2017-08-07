@@ -21,11 +21,13 @@ class Preprocessor(object):
         self.method = self.structured_configs['method']
         if self.method == "Average":
             self.average = self.structured_configs['average']
-            if self.average not in ('Arithmetic', 'Geometric',
-                                      'Harmonic'):
+            if self.average not in ('Arithmetic', 'Geometric', 'Harmonic'):
                 print "Choose either Arithmetic, Geometric or Harmonic."
                 exit()
         elif self.method != 'Flow-based':
+
+            self.average = self.structured_configs['average']
+        else:
             print "Choose either Flow-based or Average."
             exit()
 
@@ -70,10 +72,15 @@ class Preprocessor(object):
             print "took {0}".format(time.time()-t0), "seconds..."
 
         if self.method == "Flow-based":
-            self.SUM.set_local_problem()
 
+            self.SUM.set_local_problem()
+            print "Setting local boundaries..."
+            t0 = time.time()
+            self.SUM.set_local_problem()
+            print "took {0}".format(time.time()-t0), "seconds..."
         print "Generating coarse scale grid..."
         exit()
         t0 = time.time()
-        self.SUM.coarse_grid()
+        self.SUM.set_local_problem()
+        # self.SUM.coarse_grid()
         print "took {0}".format(time.time()-t0), "seconds..."
