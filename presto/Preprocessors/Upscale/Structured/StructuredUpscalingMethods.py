@@ -320,7 +320,6 @@ class StructuredUpscalingMethods:
         #       - This should go on .cfg
 
         perm_values = []
-        # i = 0
         with open('spe_perm.dat') as perm:
             for line in perm:
                 line_list = line.rstrip().split('        	')
@@ -329,6 +328,7 @@ class StructuredUpscalingMethods:
         self.perm_values = [float(val) for val in perm_values]
 
     def upscale_phi(self):
+        primal_phi = []
         for _, primal in self.primals.iteritems():
             # Calculate mean phi on primal
             fine_elems_in_primal = self.mb.get_entities_by_type(
@@ -338,6 +338,33 @@ class StructuredUpscalingMethods:
             primal_mean_phi = fine_elems_phi_values.mean()
             # Store mean phi on the primal meshset and internal elements
             self.mb.tag_set_data(self.primal_phi_tag, primal, primal_mean_phi)
+
+        mesh_size_coarse = self._coarse_dims()
+        with open('coarse_phi.dat', 'w') as coarse_phi:
+            for k in xrange(mesh_size_coarse[2]):
+                coarse_phi.write('-- LAYER  {0}'.format(k+1))
+                coarse_phi.write('\n')
+                for j in xrange(mesh_size_coarse[1]):
+                    coarse_phi.write('-- ROW  {0}'.format(j+1))
+                    coarse_phi.write('\n')
+                    for i in xrange(mesh_size_coarse[0]):
+                        line = 0
+                        while line < mesh_size_coarse[0]:
+
+                            coarse_phi.write('%f' % (self.mb.tag_get_data(
+                                                self.primal_phi_tag,
+                                                self.primals[(i, j, k)])
+                                                   )
+                                             )
+                            coarse_phi.write('        	')
+                            line += 1
+                        coarse_phi.write('%f' % (self.mb.tag_get_data(
+                                            self.primal_phi_tag,
+                                            self.primals[(i, j, k)])
+                                               )
+                                         )
+                        coarse_phi.write('\n')
+            coarse_phi.close()
 
     def upscale_perm_mean(self, average_method):
         self.average_method = average_method
@@ -483,5 +510,9 @@ class StructuredUpscalingMethods:
                         self.mb.tag_set_data(self.boundary_tag, el, 1.0)
                     self.coarse_elems.append(el)
                     cur_id += 1
-    # def export(self, outfile):
-    #     self.mb.write_file(outfile)
+
+    def export_data(self, data_to_export, file_name):
+        pass
+
+    def export(self, outfile):
+        self.mb.write_file(outfile)
