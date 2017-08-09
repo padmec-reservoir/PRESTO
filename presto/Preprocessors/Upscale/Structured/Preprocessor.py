@@ -7,6 +7,11 @@ class Preprocessor(object):
     def __init__(self, configs):
         self.configs = configs
 
+        self.structured_general = self.configs['General']
+
+        self.output_file = self.structured_general['output-file']
+        self.fine_grid_construct = self.structured_general['fine-grid']
+
         self.structured_configs = self.configs['StructuredUPS']
 
         self.values = self.structured_configs['coarse-ratio']
@@ -25,9 +30,6 @@ class Preprocessor(object):
                 print "Choose either Arithmetic, Geometric or Harmonic."
                 exit()
         elif self.method != 'Flow-based':
-
-            self.average = self.structured_configs['average']
-        else:
             print "Choose either Flow-based or Average."
             exit()
 
@@ -58,6 +60,13 @@ class Preprocessor(object):
         self.SUM.create_fine_blocks_and_primal()
         print "took {0}".format(time.time()-t0), "seconds..."
 
+        if self.fine_grid_construct == 'fine_grid':
+            print "exporting fine scale mesh"
+            t0 = time.time()
+            self.SUM.export(self.output_file)
+            print "took {0}".format(time.time()-t0), "seconds..."
+            exit()
+
         print "Upscaling the porosity..."
         t0 = time.time()
         self.SUM.upscale_phi()
@@ -78,9 +87,14 @@ class Preprocessor(object):
             t0 = time.time()
             self.SUM.set_local_problem()
             print "took {0}".format(time.time()-t0), "seconds..."
+
         print "Generating coarse scale grid..."
-        exit()
         t0 = time.time()
         self.SUM.set_local_problem()
-        # self.SUM.coarse_grid()
+        self.SUM.coarse_grid()
         print "took {0}".format(time.time()-t0), "seconds..."
+
+        print "Exporting..."
+        t0 = time.time()
+        self.SUM.export(self.output_file)
+        print "took {0}\n".format(time.time()-t0)

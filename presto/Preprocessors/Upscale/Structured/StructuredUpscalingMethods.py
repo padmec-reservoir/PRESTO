@@ -1,4 +1,5 @@
 import numpy as np
+import collections
 from pymoab import types
 from pymoab import topo_util
 
@@ -156,6 +157,7 @@ class StructuredUpscalingMethods:
                 self.primal_ids[dim] = (self.primal_ids[dim][:self.mesh_size[
                     dim] // self.coarse_ratio[dim] * self.coarse_ratio[dim]] +
                                         new_primal[dim])
+            print self.primal_ids[dim]
 
     def create_fine_vertices(self):
         # TODO: - Should go on Common
@@ -200,10 +202,15 @@ class StructuredUpscalingMethods:
 
         return hexa
 
+    def _coarsening_ratio(self, dim):
+        coarsening = (collections.Counter(self.primal_ids[dim]))
+        return coarsening.values()
+
     def create_fine_blocks_and_primal(self):
         # TODO: - Should go on Common
         fine_vertices = self.create_fine_vertices()
         cur_id = 0
+        num = 0.0
         # Create fine grid
         for k, idz in zip(xrange(self.mesh_size[2]),
                           self.primal_ids[2]):
@@ -236,6 +243,14 @@ class StructuredUpscalingMethods:
                                                self.mesh_size[1] *
                                                self.mesh_size[2]]])
 
+                    if i == self.coarse_ratio[0] * self.primal_ids[0][i]:
+                        self.mb.tag_set_data(self.boundary_tag, el, 1.0)
+
+                    if i == (self.coarse_ratio[0] * self.primal_ids[0][i] +
+                             self._coarsening_ratio(0)[self.primal_ids[0][i]] -
+                             1):
+                        self.mb.tag_set_data(self.boundary_tag, el, -1.0)
+
                     self.elems.append(el)
 
                     # Create primal coarse grid
@@ -250,7 +265,7 @@ class StructuredUpscalingMethods:
                         self.mb.add_entities(primal, [el])
                         self.mb.tag_set_data(
                             self.fine_to_primal_tag, el, primal)
-
+                num += 1.0
         primal_id = 0
         for primal in self.primals.values():
             self.mb.tag_set_data(self.primal_id_tag, primal, primal_id)
@@ -328,7 +343,6 @@ class StructuredUpscalingMethods:
         self.perm_values = [float(val) for val in perm_values]
 
     def upscale_phi(self):
-        primal_phi = []
         for _, primal in self.primals.iteritems():
             # Calculate mean phi on primal
             fine_elems_in_primal = self.mb.get_entities_by_type(
@@ -447,20 +461,19 @@ class StructuredUpscalingMethods:
 
     def set_local_problem(self):  # Other parameters might go in as an input
         # create specific tags for setting local problems
-        for primal_id, primal in self.primals.iteritems():
-            boundary_val = 1.0
-            for k in xrange(self.mesh_size[2]):
-                for j in xrange(self.mesh_size[1]):
-                    for i in xrange(self._coarse_dims()[0]):
+        for k in xrange(self.mesh_size[2]):
+            for j in xrange(self.mesh_size[1]):
+                for i in xrange(self._coarse_dims()[0]):
+                    if i == self.coarse_ratio[0] * self.primal_ids[0][i]:
                         self.mb.tag_set_data(self.boundary_tag,
-                                             self._get_elem_by_ijk(
-                                                 (i * self.coarse_ratio[0],
-                                                  j, k)), boundary_val)
+                                             self._get_elem_by_ijk((i, j, k)),
+                                             1.0)
+                    if i == (self.coarse_ratio[0] * self.primal_ids[0][i] +
+                             self._coarsening_ratio(0)[self.primal_ids[0][i]] -
+                             1):
                         self.mb.tag_set_data(self.boundary_tag,
-                                             self._get_elem_by_ijk(
-                                              ((i + 1) * self.coarse_ratio[0]
-                                               - 1, j, k)), boundary_val)
-            boundary_val += 1.0
+                                             self._get_elem_by_ijk((i, j, k)),
+                                             -1.0)
 
     def upscale_perm_flow_based(self):
         # TODO: - matrix assembly;
