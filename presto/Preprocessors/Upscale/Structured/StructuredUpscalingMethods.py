@@ -243,11 +243,11 @@ class StructuredUpscalingMethods:
                                                self.mesh_size[1] *
                                                self.mesh_size[2]]])
 
-                    if i == self.coarse_ratio[0] * self.primal_ids[0][i]:
+                    if j == self.coarse_ratio[1] * self.primal_ids[1][j]:
                         self.mb.tag_set_data(self.boundary_tag, el, 1.0)
 
-                    if i == (self.coarse_ratio[0] * self.primal_ids[0][i] +
-                             self._coarsening_ratio(0)[self.primal_ids[0][i]] -
+                    if j == (self.coarse_ratio[1] * self.primal_ids[1][j] +
+                             self._coarsening_ratio(1)[self.primal_ids[1][j]] -
                              1):
                         self.mb.tag_set_data(self.boundary_tag, el, -1.0)
 
@@ -265,7 +265,7 @@ class StructuredUpscalingMethods:
                         self.mb.add_entities(primal, [el])
                         self.mb.tag_set_data(
                             self.fine_to_primal_tag, el, primal)
-                num += 1.0
+                        num += 1.0
         primal_id = 0
         for primal in self.primals.values():
             self.mb.tag_set_data(self.primal_id_tag, primal, primal_id)
@@ -461,19 +461,25 @@ class StructuredUpscalingMethods:
 
     def set_local_problem(self):  # Other parameters might go in as an input
         # create specific tags for setting local problems
-        for k in xrange(self.mesh_size[2]):
-            for j in xrange(self.mesh_size[1]):
-                for i in xrange(self._coarse_dims()[0]):
-                    if i == self.coarse_ratio[0] * self.primal_ids[0][i]:
-                        self.mb.tag_set_data(self.boundary_tag,
-                                             self._get_elem_by_ijk((i, j, k)),
-                                             1.0)
-                    if i == (self.coarse_ratio[0] * self.primal_ids[0][i] +
-                             self._coarsening_ratio(0)[self.primal_ids[0][i]] -
-                             1):
-                        self.mb.tag_set_data(self.boundary_tag,
-                                             self._get_elem_by_ijk((i, j, k)),
-                                             -1.0)
+        for dim in range(0, 3):
+            for k in xrange(self.mesh_size[2]):
+                for j in xrange(self.mesh_size[1]):
+                    for i in xrange(self._coarse_dims()[0]):
+                        if (i, j, k)[dim] == (self.coarse_ratio[dim] *
+                                              self.primal_ids[dim][
+                                              (i, j, k)[dim]]):
+                            self.mb.tag_set_data(self.boundary_tag,
+                                                 self._get_elem_by_ijk(
+                                                 (i, j, k)), 1.0)
+                        if (i, j, k)[dim] == (self.coarse_ratio[dim] *
+                                              self.primal_ids[dim][
+                                              (i, j, k)[dim]] +
+                                              self._coarsening_ratio(dim)[
+                                              self.primal_ids[dim][
+                                                    (i, j, k)[dim]]] - 1):
+                            self.mb.tag_set_data(self.boundary_tag,
+                                                 self._get_elem_by_ijk(
+                                                 (i, j, k)), -1.0)
 
     def upscale_perm_flow_based(self):
         # TODO: - matrix assembly;
