@@ -1,7 +1,9 @@
 import numpy as np
 import collections
+import time
 from pymoab import types
 from pymoab import topo_util
+from PyTrilinos import Epetra, AztecOO, Amesos
 
 
 class StructuredUpscalingMethods:
@@ -45,6 +47,9 @@ class StructuredUpscalingMethods:
         self.root_set = self.mb.get_root_set()
         self.mesh_topo_util = topo_util.MeshTopoUtil(self.mb)
 
+        # Pytrilinos boilerplate
+        self.comm = Epetra.PyComm()
+
     def create_tags(self):
         # TODO: - Should go on Common (?)
 
@@ -66,8 +71,28 @@ class StructuredUpscalingMethods:
             "PHI", 1, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
 
-        self.boundary_tag = self.mb.tag_get_handle(
-            "LOCAL BOUNDARY CONDITIONS", 1, types.MB_TYPE_DOUBLE,
+        self.boundary_x_tag, self.boundary_y_tag, self.boundary_z_tag = (
+            self.mb.tag_get_handle(
+                "LOCAL BOUNDARY CONDITIONS - X Axis", 1, types.MB_TYPE_DOUBLE,
+                types.MB_TAG_SPARSE, True),
+            self.mb.tag_get_handle(
+                "LOCAL BOUNDARY CONDITIONS - y Axis", 1, types.MB_TYPE_DOUBLE,
+                types.MB_TAG_SPARSE, True),
+            self.mb.tag_get_handle(
+                "LOCAL BOUNDARY CONDITIONS - z Axis", 1, types.MB_TYPE_DOUBLE,
+                types.MB_TAG_SPARSE, True)
+        )
+
+        self.boundary_tag_x = self.mb.tag_get_handle(
+            "LOCAL BOUNDARY CONDITIONS - X Axis", 1, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
+
+        self.boundary_tag_y = self.mb.tag_get_handle(
+            "LOCAL BOUNDARY CONDITIONS - y Axis", 1, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
+
+        self.boundary_tag_z = self.mb.tag_get_handle(
+            "LOCAL BOUNDARY CONDITIONS - z Axis", 1, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
 
         # tag handle for upscaling operation
@@ -242,15 +267,6 @@ class StructuredUpscalingMethods:
                         0, 0, self.perm_values[cur_id + 2*self.mesh_size[0] *
                                                self.mesh_size[1] *
                                                self.mesh_size[2]]])
-
-                    if j == self.coarse_ratio[1] * self.primal_ids[1][j]:
-                        self.mb.tag_set_data(self.boundary_tag, el, 1.0)
-
-                    if j == (self.coarse_ratio[1] * self.primal_ids[1][j] +
-                             self._coarsening_ratio(1)[self.primal_ids[1][j]] -
-                             1):
-                        self.mb.tag_set_data(self.boundary_tag, el, -1.0)
-
                     self.elems.append(el)
 
                     # Create primal coarse grid
@@ -461,31 +477,53 @@ class StructuredUpscalingMethods:
 
     def set_local_problem(self):  # Other parameters might go in as an input
         # create specific tags for setting local problems
+        self.boundary_dir = (self.boundary_x_tag,
+                             self.boundary_y_tag,
+                             self.boundary_z_tag
+                             )
         for dim in range(0, 3):
             for k in xrange(self.mesh_size[2]):
                 for j in xrange(self.mesh_size[1]):
-                    for i in xrange(self._coarse_dims()[0]):
-                        if (i, j, k)[dim] == (self.coarse_ratio[dim] *
-                                              self.primal_ids[dim][
-                                              (i, j, k)[dim]]):
-                            self.mb.tag_set_data(self.boundary_tag,
-                                                 self._get_elem_by_ijk(
-                                                 (i, j, k)), 1.0)
-                        if (i, j, k)[dim] == (self.coarse_ratio[dim] *
-                                              self.primal_ids[dim][
-                                              (i, j, k)[dim]] +
-                                              self._coarsening_ratio(dim)[
-                                              self.primal_ids[dim][
-                                                    (i, j, k)[dim]]] - 1):
-                            self.mb.tag_set_data(self.boundary_tag,
-                                                 self._get_elem_by_ijk(
-                                                 (i, j, k)), -1.0)
+                    for i in xrange(self.mesh_size[0]):
+                        if (i, j, k)[dim] == (self.coarse_ratio[dim] * self.primal_ids[dim][(i, j, k)[dim]]):
+                            self.mb.tag_set_data(self.boundary_dir[dim], self._get_elem_by_ijk((i, j, k)), 1.0)
+                        if (i, j, k)[dim] == (self.coarse_ratio[dim] * self.primal_ids[dim][(i, j, k)[dim]] + self._coarsening_ratio(dim)[self.primal_ids[dim][(i, j, k)[dim]]] - 1):
+                            self.mb.tag_set_data(self.boundary_dir[dim], self._get_elem_by_ijk((i, j, k)), 0.0)
 
     def upscale_perm_flow_based(self):
-        # TODO: - matrix assembly;
-        #       - boundaries for experiments in each directions
-        #       - k_eff = q/(-grad(p).A)
-        pass
+        basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+        perm = []
+        for primal_id, primal in self.primals.iteritems():
+
+            fine_elems_in_primal = self.mb.get_entities_by_type(
+                primal, types.MBHEX)
+            fine_perm_values = self.mb.tag_get_data(self.perm_tag,
+                                                    fine_elems_in_primal)
+            primal_perm = [tensor.reshape(3, 3) for tensor in fine_perm_values]
+            for dim in range(0, 3):
+                perm = [(np.dot(np.dot(tensor, basis[dim]), basis[dim]))
+                        for tensor in primal_perm]
+
+            # should have a dim set here for solving the 3 directions problem
+
+            v_ids = self.mb.tag_get_data(self.gid_tag,
+                                         fine_elems_in_primal).flatten()
+            v_ids = np.subtract(v_ids, np.min(v_ids))
+            std_map = Epetra.Map(len(fine_elems_in_primal), 0, self.comm)
+            A = Epetra.CrsMatrix(Epetra.Copy, std_map, 0)
+            pres_tag = self.mb.tag_get_handle(
+                "Pressure {0}".format(primal_id), 1, types.MB_TYPE_DOUBLE,
+                types.MB_TAG_SPARSE, True)
+            b = Epetra.Vector(std_map)
+            x = Epetra.Vector(std_map)
+            self.mb.tag_set_data(pres_tag, fine_elems_in_primal, np.asarray(b))
+            print "Filling matrix..."
+            count = 0
+            for idx, elem in zip(v_ids, fine_elems_in_primal):
+                count += 1
+                adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
+                    np.asarray([elem]), 2, 3)
+                adj_volumes_set = set(adj_volumes)
 
     def coarse_grid(self):
         # We should include a swithc for either printing coarse grid or fine
@@ -523,11 +561,6 @@ class StructuredUpscalingMethods:
                                          self.mb.tag_get_data(
                                              self.primal_perm_tag,
                                              self.primals[(i, j, k)]))
-                    if i == 0:
-                        self.mb.tag_set_data(self.boundary_tag, el, 1.0)
-                    if i == coarse_dims[0] - 1:
-                        self.mb.tag_set_data(self.boundary_tag, el, 1.0)
-                    self.coarse_elems.append(el)
                     cur_id += 1
 
     def export_data(self, data_to_export, file_name):
