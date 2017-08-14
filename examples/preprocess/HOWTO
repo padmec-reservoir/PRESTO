@@ -1,9 +1,20 @@
 Under any subfolder, the following command will do the preprocessing and
-generate a .h5m file:
+generate a .h5m/vtk file:
 
-$ python -m elliptic.Preprocess presto.Preprocessors.<Preprocessor> <config>
+$ python -m elliptic.Preprocess <config>
 
 Replacing <Preprocessor> with the desired module and <config> with the config file.
 
 For example, under the multiscale example folder, run the following command:
-$ python -m elliptic.Preprocess presto.Preprocessors.Multiscale.Structured structured.cfg
+$ python -m elliptic.Preprocess structured.cfg
+
+If you are running on Docker you you should have pulled the image gpkc/elliptic.
+Start docker
+$ sudo systemctl start docker
+run docker as follows
+$ sudo docker run -v $PWD:/elliptic gpkc/elliptic bash -c "cd /elliptic; python -m
+elliptic.Preprocess <config>"
+
+For example, under the upscale example folder, run the following command:
+$ sudo docker run -v $PWD:/elliptic gpkc/elliptic bash -c "cd /elliptic; python -m
+elliptic.Preprocess structured.cfg"
