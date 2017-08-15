@@ -182,7 +182,6 @@ class StructuredUpscalingMethods:
                 self.primal_ids[dim] = (self.primal_ids[dim][:self.mesh_size[
                     dim] // self.coarse_ratio[dim] * self.coarse_ratio[dim]] +
                                         new_primal[dim])
-            print self.primal_ids[dim]
 
     def create_fine_vertices(self):
         # TODO: - Should go on Common
@@ -481,14 +480,26 @@ class StructuredUpscalingMethods:
                              self.boundary_y_tag,
                              self.boundary_z_tag
                              )
+        self.boundary_meshset = {}
         for dim in range(0, 3):
+            self.boundary_meshset[dim] = self.mb.create_meshset()
             for k in xrange(self.mesh_size[2]):
                 for j in xrange(self.mesh_size[1]):
                     for i in xrange(self.mesh_size[0]):
-                        if (i, j, k)[dim] == (self.coarse_ratio[dim] * self.primal_ids[dim][(i, j, k)[dim]]):
-                            self.mb.tag_set_data(self.boundary_dir[dim], self._get_elem_by_ijk((i, j, k)), 1.0)
-                        if (i, j, k)[dim] == (self.coarse_ratio[dim] * self.primal_ids[dim][(i, j, k)[dim]] + self._coarsening_ratio(dim)[self.primal_ids[dim][(i, j, k)[dim]]] - 1):
-                            self.mb.tag_set_data(self.boundary_dir[dim], self._get_elem_by_ijk((i, j, k)), 0.0)
+                        el = self._get_elem_by_ijk((i, j, k))
+                        if (i, j, k)[dim] == (self.coarse_ratio[dim] *
+                                              self.primal_ids[dim][(i, j,
+                                                                    k)[dim]]):
+                            self.mb.tag_set_data(self.boundary_dir[dim],
+                                                 el, 1.0)
+                            self.mb.add_entities(self.boundary_meshset[dim], [el])
+
+                        if (i, j, k)[dim] == (self.coarse_ratio[dim] *
+                                              self.primal_ids[dim][(i, j, k)[dim]] + self._coarsening_ratio(dim)[self.primal_ids[dim][(i, j, k)[dim]]] - 1):
+                            self.mb.tag_set_data(self.boundary_dir[dim], el, 0.0)
+                            self.mb.add_entities(self.boundary_meshset[dim], [el])
+
+            print dim, self.boundary_meshset[dim]
 
     def upscale_perm_flow_based(self):
         basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
@@ -504,8 +515,6 @@ class StructuredUpscalingMethods:
                 perm = [(np.dot(np.dot(tensor, basis[dim]), basis[dim]))
                         for tensor in primal_perm]
 
-            # should have a dim set here for solving the 3 directions problem
-
             v_ids = self.mb.tag_get_data(self.gid_tag,
                                          fine_elems_in_primal).flatten()
             v_ids = np.subtract(v_ids, np.min(v_ids))
@@ -517,13 +526,19 @@ class StructuredUpscalingMethods:
             b = Epetra.Vector(std_map)
             x = Epetra.Vector(std_map)
             self.mb.tag_set_data(pres_tag, fine_elems_in_primal, np.asarray(b))
-            print "Filling matrix..."
+            # print "Filling matrix..."
             count = 0
             for idx, elem in zip(v_ids, fine_elems_in_primal):
                 count += 1
                 adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
                     np.asarray([elem]), 2, 3)
                 adj_volumes_set = set(adj_volumes)
+                # print adj_volumes_set
+                boundary = False
+
+                for tag, boundary_elems in self.boundary_meshset.iteritems():
+                    # if elem in boundary_elems:
+                    pass
 
     def coarse_grid(self):
         # We should include a swithc for either printing coarse grid or fine
