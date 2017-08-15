@@ -1,6 +1,5 @@
 import numpy as np
 import collections
-import time
 from pymoab import types
 from pymoab import topo_util
 from PyTrilinos import Epetra, AztecOO, Amesos
@@ -492,12 +491,20 @@ class StructuredUpscalingMethods:
                                                                     k)[dim]]):
                             self.mb.tag_set_data(self.boundary_dir[dim],
                                                  el, 1.0)
-                            self.mb.add_entities(self.boundary_meshset[dim], [el])
+                            self.mb.add_entities(
+                                self.boundary_meshset[dim], [el]
+                                )
 
                         if (i, j, k)[dim] == (self.coarse_ratio[dim] *
-                                              self.primal_ids[dim][(i, j, k)[dim]] + self._coarsening_ratio(dim)[self.primal_ids[dim][(i, j, k)[dim]]] - 1):
-                            self.mb.tag_set_data(self.boundary_dir[dim], el, 0.0)
-                            self.mb.add_entities(self.boundary_meshset[dim], [el])
+                                              self.primal_ids[dim][
+                                                  (i, j, k)[dim]] +
+                                              self._coarsening_ratio(dim)[
+                                                  self.primal_ids[dim][
+                                                      (i, j, k)[dim]]] - 1):
+                            self.mb.tag_set_data(
+                                self.boundary_dir[dim], el, 0.0)
+                            self.mb.add_entities(
+                                self.boundary_meshset[dim], [el])
 
             print dim, self.boundary_meshset[dim]
 
@@ -514,7 +521,6 @@ class StructuredUpscalingMethods:
             for dim in range(0, 3):
                 perm = [(np.dot(np.dot(tensor, basis[dim]), basis[dim]))
                         for tensor in primal_perm]
-
             v_ids = self.mb.tag_get_data(self.gid_tag,
                                          fine_elems_in_primal).flatten()
             v_ids = np.subtract(v_ids, np.min(v_ids))
@@ -533,7 +539,6 @@ class StructuredUpscalingMethods:
                 adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
                     np.asarray([elem]), 2, 3)
                 adj_volumes_set = set(adj_volumes)
-                # print adj_volumes_set
                 boundary = False
 
                 for tag, boundary_elems in self.boundary_meshset.iteritems():

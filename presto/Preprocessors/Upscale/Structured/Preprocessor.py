@@ -65,7 +65,7 @@ class Preprocessor(object):
             t0 = time.time()
             self.SUM.export(self.output_file)
             print "took {0}".format(time.time()-t0), "seconds..."
-            exit()
+
 
         print "Upscaling the porosity..."
         t0 = time.time()
@@ -86,7 +86,7 @@ class Preprocessor(object):
             self.SUM.set_local_problem()
             print "took {0}".format(time.time()-t0), "seconds..."
 
-        print "Generating coarse scale grid..."
+        print "blalblablal Generating coarse scale grid..."
         t0 = time.time()
         # self.SUM.coarse_grid()
         self.SUM.upscale_perm_flow_based()
