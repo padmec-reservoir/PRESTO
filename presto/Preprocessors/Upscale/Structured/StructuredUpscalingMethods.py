@@ -82,18 +82,6 @@ class StructuredUpscalingMethods:
                 types.MB_TAG_SPARSE, True)
         )
 
-        self.boundary_tag_x = self.mb.tag_get_handle(
-            "LOCAL BOUNDARY CONDITIONS - X Axis", 1, types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE, True)
-
-        self.boundary_tag_y = self.mb.tag_get_handle(
-            "LOCAL BOUNDARY CONDITIONS - y Axis", 1, types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE, True)
-
-        self.boundary_tag_z = self.mb.tag_get_handle(
-            "LOCAL BOUNDARY CONDITIONS - z Axis", 1, types.MB_TYPE_DOUBLE,
-            types.MB_TAG_SPARSE, True)
-
         # tag handle for upscaling operation
         self.primal_phi_tag = self.mb.tag_get_handle(
             "PRIMAL_PHI", 1, types.MB_TYPE_DOUBLE,
@@ -109,9 +97,11 @@ class StructuredUpscalingMethods:
             types.MB_TAG_SPARSE, True)
 
         # either shoud go or put other directions..., I...
+        """
         self.abs_perm_x_tag = self.mb.tag_get_handle(
             "ABS_PERM_X", 1, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
+        """
 
         self.fine_to_primal_tag = self.mb.tag_get_handle(
             "FINE_TO_PRIMAL", 1, types.MB_TYPE_HANDLE,
@@ -128,11 +118,11 @@ class StructuredUpscalingMethods:
     def get_block_size_coarse(self):
         block_size_coarse = []
         total_size = (np.asarray(self.mesh_size, dtype='int32')) * np.asarray(
-            self.block_size, dtype='float64')
+            self.block_size * 0.3048, dtype='float64')
 
         for dim in range(0, 3):
-            block_size_coarse.append([self.coarse_ratio[dim]*np.asarray(
-                self.block_size[dim], dtype='float64') * coarse_dim
+            block_size_coarse.append([self.coarse_ratio[dim] * np.asarray(
+                self.block_size[dim] * 0.3048, dtype='float64') * coarse_dim
                 for coarse_dim in np.arange(self._coarse_dims()[dim],
                                             dtype='int32')])
             block_size_coarse[dim].append(total_size[dim])
@@ -186,12 +176,15 @@ class StructuredUpscalingMethods:
         # TODO: - Should go on Common
 
         coords = np.array([
-            (i, j, k) for k in (np.arange(self.mesh_size[2]+1,
-                                          dtype='float64')*self.block_size[2])
-            for j in (np.arange(self.mesh_size[1] + 1,
-                                dtype='float64')*self.block_size[1])
-            for i in (np.arange(self.mesh_size[0] + 1,
-                                dtype='float64')*self.block_size[0])
+            (i, j, k) for k in (np.arange(
+                self.mesh_size[2] + 1, dtype='float64') *
+                                self.block_size[2] * 0.3048)
+            for j in (np.arange(
+                self.mesh_size[1] + 1, dtype='float64') *
+                      self.block_size[1] * 0.3048)
+            for i in (np.arange(
+                self.mesh_size[0] + 1, dtype='float64') *
+                      self.block_size[0] * 0.3048)
         ], dtype='float64')
         return self.mb.create_vertices(coords.flatten())
 
@@ -233,7 +226,6 @@ class StructuredUpscalingMethods:
         # TODO: - Should go on Common
         fine_vertices = self.create_fine_vertices()
         cur_id = 0
-        num = 0.0
         # Create fine grid
         for k, idz in zip(xrange(self.mesh_size[2]),
                           self.primal_ids[2]):
@@ -279,7 +271,6 @@ class StructuredUpscalingMethods:
                         self.mb.add_entities(primal, [el])
                         self.mb.tag_set_data(
                             self.fine_to_primal_tag, el, primal)
-                        num += 1.0
         primal_id = 0
         for primal in self.primals.values():
             self.mb.tag_set_data(self.primal_id_tag, primal, primal_id)
@@ -322,8 +313,8 @@ class StructuredUpscalingMethods:
         """
         Track down the block from its (i,j,k) position.
         """
-        block = (k)*self.mesh_size[0]*self.mesh_size[1]+(
-            (i)+(j)*self.mesh_size[0])
+        block = (k) * self.mesh_size[0] * self.mesh_size[1]+(
+            (i)+(j) * self.mesh_size[0])
         return block
 
     def _get_elem_by_ijk(self, ijk):
@@ -332,12 +323,12 @@ class StructuredUpscalingMethods:
         block_id = self._get_block_by_ijk(
             ijk[0], ijk[1], ijk[2])
         elem = self.elems[block_id]
-        return elem
+        return elem  # Why not "return self.elems[block_id]" ?????
 
     def read_phi(self):
         # TODO: - Should go on Common
         #       - This should go on .cfg
-
+        #       - It should have a if option for reading or for generating
         phi_values = []
         with open('spe_phi.dat') as phi:
             for line in phi:
@@ -347,6 +338,7 @@ class StructuredUpscalingMethods:
     def read_perm(self):
         # TODO: - Should go on Common
         #       - This should go on .cfg
+        #       - It should have a if option for reading or for generating
 
         perm_values = []
         with open('spe_perm.dat') as perm:
@@ -412,7 +404,7 @@ class StructuredUpscalingMethods:
                     primal_perm[dim] = np.mean(perm[dim])
                 elif average_method == 'Geometric':
                     primal_perm[dim] = np.prod(np.asarray(
-                        perm[dim]))**(1/len(np.asarray(perm[dim])))
+                        perm[dim])) ** (1/len(np.asarray(perm[dim])))
                 elif average_method == 'Harmonic':
                     primal_perm[dim] = len(np.asarray(
                         perm[dim]))/sum(1/np.asarray(perm[dim]))
@@ -506,50 +498,80 @@ class StructuredUpscalingMethods:
                             self.mb.add_entities(
                                 self.boundary_meshset[dim], [el])
 
-            print dim, self.boundary_meshset[dim]
-
     def upscale_perm_flow_based(self):
-        basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
-        perm = []
         for primal_id, primal in self.primals.iteritems():
 
             fine_elems_in_primal = self.mb.get_entities_by_type(
                 primal, types.MBHEX)
-            fine_perm_values = self.mb.tag_get_data(self.perm_tag,
-                                                    fine_elems_in_primal)
-            primal_perm = [tensor.reshape(3, 3) for tensor in fine_perm_values]
-            for dim in range(0, 3):
-                perm = [(np.dot(np.dot(tensor, basis[dim]), basis[dim]))
-                        for tensor in primal_perm]
             v_ids = self.mb.tag_get_data(self.gid_tag,
                                          fine_elems_in_primal).flatten()
+            print v_ids
             v_ids = np.subtract(v_ids, np.min(v_ids))
+            v_ids_map = dict(zip(v_ids, range(len(fine_elems_in_primal))))
             std_map = Epetra.Map(len(fine_elems_in_primal), 0, self.comm)
             A = Epetra.CrsMatrix(Epetra.Copy, std_map, 0)
             pres_tag = self.mb.tag_get_handle(
                 "Pressure {0}".format(primal_id), 1, types.MB_TYPE_DOUBLE,
                 types.MB_TAG_SPARSE, True)
             b = Epetra.Vector(std_map)
+
             x = Epetra.Vector(std_map)
             self.mb.tag_set_data(pres_tag, fine_elems_in_primal, np.asarray(b))
-            # print "Filling matrix..."
-            count = 0
+
             for idx, elem in zip(v_ids, fine_elems_in_primal):
-                count += 1
+
                 adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
                     np.asarray([elem]), 2, 3)
                 adj_volumes_set = set(adj_volumes)
+                # print adj_volumes
                 boundary = False
 
                 for tag, boundary_elems in self.boundary_meshset.iteritems():
-                    # if elem in boundary_elems:
-                    pass
+                    if elem in (self.mb.get_entities_by_handle(
+                                self.boundary_meshset[0])):
+                        b[v_ids_map[idx]] = self.mb.tag_get_data(
+                            self.boundary_x_tag, elem)
+                        A.InsertGlobalValues(v_ids_map[idx], [1],
+                                             [v_ids_map[idx]])
+
+                if not boundary:
+                    elem_center = self.mesh_topo_util.get_average_position(
+                        np.asarray([elem]))
+                    K1 = self.mb.tag_get_data(self.perm_tag, [elem], flat=True)
+                    adj_perms = []
+                    for adjacencies in range(len(adj_volumes)):
+                        adj_perms.append(self.mb.tag_get_data(
+                            self.perm_tag, adj_volumes, flat=True)[
+                                adjacencies*9:(adjacencies+1)*9])
+                    values = []
+                    for K2, adj in zip(adj_perms, adj_volumes_set):
+                        adj_center = self.mesh_topo_util.get_average_position(
+                            np.asarray([adj]))
+                        N = elem_center - adj_center
+                        N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 + N[2] ** 2)
+                        K1proj = np.dot(np.dot(N, K1.reshape([3, 3])), N)
+                        K2proj = np.dot(np.dot(N, K2.reshape([3, 3])), N)
+
+                        dx = np.linalg.norm((elem_center - adj_center)/2)
+                        K_equiv = (2 * K1proj * K2proj) / (
+                            K1proj * dx + K2proj * dx)
+                        values.append(- K_equiv)
+
+                    #print self.mb.tag_get_data(self.gid_tag, adj_volumes)
+
+                    ids = self.mb.tag_get_data(self.gid_tag, adj_volumes)
+
+                    values = np.append(values, - (np.sum(values)))
+                    ids = np.asarray(np.append(ids, v_ids_map[idx]), dtype='int32')
+
+                    A.InsertGlobalValues(v_ids_map[idx], values, ids)
+            # print A
+            # A.FillComplete()
+                    # print K_equiv
 
     def coarse_grid(self):
         # We should include a swithc for either printing coarse grid or fine
         # grid here that is fedy by the .cfg file.
-
-        # if self.grid == 'coarse'
         """
         This will not delete primal grid information prevously calculated,
         since it is only looking for elements within the root_set that are
