@@ -118,11 +118,11 @@ class StructuredUpscalingMethods:
     def get_block_size_coarse(self):
         block_size_coarse = []
         total_size = (np.asarray(self.mesh_size, dtype='int32')) * np.asarray(
-            self.block_size * 0.3048, dtype='float64')
+            self.block_size, dtype='float64')
 
         for dim in range(0, 3):
             block_size_coarse.append([self.coarse_ratio[dim] * np.asarray(
-                self.block_size[dim] * 0.3048, dtype='float64') * coarse_dim
+                self.block_size[dim], dtype='float64') * coarse_dim
                 for coarse_dim in np.arange(self._coarse_dims()[dim],
                                             dtype='int32')])
             block_size_coarse[dim].append(total_size[dim])
@@ -177,13 +177,13 @@ class StructuredUpscalingMethods:
         coords = np.array([
             (i, j, k) for k in (np.arange(
                 self.mesh_size[2] + 1, dtype='float64') *
-                                self.block_size[2] * 0.3048)
+                                self.block_size[2])
             for j in (np.arange(
                 self.mesh_size[1] + 1, dtype='float64') *
-                      self.block_size[1] * 0.3048)
+                      self.block_size[1])
             for i in (np.arange(
                 self.mesh_size[0] + 1, dtype='float64') *
-                      self.block_size[0] * 0.3048)
+                      self.block_size[0])
         ], dtype='float64')
         return self.mb.create_vertices(coords.flatten())
 
@@ -498,8 +498,10 @@ class StructuredUpscalingMethods:
                                 self.boundary_meshset[dim], [el])
 
     def upscale_perm_flow_based(self):
+        k = 0
         for primal_id, primal in self.primals.iteritems():
-
+            print "{0} / {1}".format(k + 1, len(self.primals))
+            k += 1
             fine_elems_in_primal = self.mb.get_entities_by_type(
                 primal, types.MBHEX)
             v_ids = self.mb.tag_get_data(self.gid_tag,
@@ -516,24 +518,23 @@ class StructuredUpscalingMethods:
 
             x = Epetra.Vector(std_map)
             self.mb.tag_set_data(pres_tag, fine_elems_in_primal, np.asarray(b))
-
             for idx, elem in zip(v_ids, fine_elems_in_primal):
                 adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
                     np.asarray([elem]), 2, 3)
                 adj_volumes = [elems for elems in adj_volumes if elems in
                                fine_elems_in_primal]
                 adj_volumes_set = set(adj_volumes)
-                # print adj_volumes
                 boundary = False
-
                 for tag, boundary_elems in self.boundary_meshset.iteritems():
                     if elem in (self.mb.get_entities_by_handle(
                                 self.boundary_meshset[0])):
                         b[v_ids_map[idx]] = self.mb.tag_get_data(
                             self.boundary_x_tag, elem)
-                        A.InsertGlobalValues(v_ids_map[idx], [1],
-                                             [v_ids_map[idx]])
+                        boundary = True
 
+                if boundary:
+                    A.InsertGlobalValues(v_ids_map[idx], [1],
+                                         [v_ids_map[idx]])
                 if not boundary:
                     elem_center = self.mesh_topo_util.get_average_position(
                         np.asarray([elem]))
@@ -557,17 +558,21 @@ class StructuredUpscalingMethods:
                             K1proj * dx + K2proj * dx)
                         values.append(- K_equiv)
                     ids = self.mb.tag_get_data(self.gid_tag, adj_volumes)
-                    ids_ = np.matrix([[[v_ids_map[ids[elem][0]]][0]] for
-                                      elem in range(len(ids))])
-                    print ids, ids_
+                    ids_ = [[v_ids_map[ids[elem][0]]][0] for
+                            elem in range(len(ids))]
                     values = np.append(values, - (np.sum(values)))
-                    ids = np.asarray(np.append(ids, v_ids_map[idx]), dtype='int32')
+                    np.asarray(ids_.append(v_ids_map[idx]))
+                    ids = np.asarray(np.append(ids, v_ids_map[idx]),
+                                     dtype='int32')
+                    A.InsertGlobalValues(v_ids_map[idx], values, ids_)
+            A.FillComplete()
+            linearProblem = Epetra.LinearProblem(A, x, b)
+            solver = AztecOO.AztecOO(linearProblem)
+            solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
+            solver.Iterate(1000, 1e-9)
+            self.mb.tag_set_data(pres_tag, fine_elems_in_primal,
+                                 np.asarray(x))
 
-
-                    A.InsertGlobalValues(v_ids_map[idx], values, ids)
-            # print A
-            # A.FillComplete()
-                    # print K_equiv
 
     def coarse_grid(self):
         # We should include a swithc for either printing coarse grid or fine
