@@ -139,7 +139,6 @@ class StructuredUpscalingMethods:
             for j in (np.array(block_size_coarse[1], dtype='float64'))
             for i in (np.array(block_size_coarse[0], dtype='float64'))
             ])
-
         return self.mb.create_vertices(coarse_coords.flatten())
 
     def _coarse_dims(self,):
@@ -505,9 +504,9 @@ class StructuredUpscalingMethods:
                 primal, types.MBHEX)
             v_ids = self.mb.tag_get_data(self.gid_tag,
                                          fine_elems_in_primal).flatten()
-            print v_ids
-            v_ids = np.subtract(v_ids, np.min(v_ids))
-            v_ids_map = dict(zip(v_ids, range(len(fine_elems_in_primal))))
+            # v_ids = np.subtract(v_ids, np.min(v_ids))
+            v_ids_map = dict(zip(v_ids, np.arange(len(fine_elems_in_primal))))
+            # print v_ids
             std_map = Epetra.Map(len(fine_elems_in_primal), 0, self.comm)
             A = Epetra.CrsMatrix(Epetra.Copy, std_map, 0)
             pres_tag = self.mb.tag_get_handle(
@@ -519,9 +518,10 @@ class StructuredUpscalingMethods:
             self.mb.tag_set_data(pres_tag, fine_elems_in_primal, np.asarray(b))
 
             for idx, elem in zip(v_ids, fine_elems_in_primal):
-
                 adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
                     np.asarray([elem]), 2, 3)
+                adj_volumes = [elems for elems in adj_volumes if elems in
+                               fine_elems_in_primal]
                 adj_volumes_set = set(adj_volumes)
                 # print adj_volumes
                 boundary = False
@@ -556,13 +556,13 @@ class StructuredUpscalingMethods:
                         K_equiv = (2 * K1proj * K2proj) / (
                             K1proj * dx + K2proj * dx)
                         values.append(- K_equiv)
-
-                    #print self.mb.tag_get_data(self.gid_tag, adj_volumes)
-
                     ids = self.mb.tag_get_data(self.gid_tag, adj_volumes)
-
+                    ids_ = np.matrix([[[v_ids_map[ids[elem][0]]][0]] for
+                                      elem in range(len(ids))])
+                    print ids, ids_
                     values = np.append(values, - (np.sum(values)))
                     ids = np.asarray(np.append(ids, v_ids_map[idx]), dtype='int32')
+
 
                     A.InsertGlobalValues(v_ids_map[idx], values, ids)
             # print A
