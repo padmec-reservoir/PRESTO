@@ -497,7 +497,7 @@ class StructuredUpscalingMethods:
                             self.mb.add_entities(
                                 self.boundary_meshset[dim], [el])
 
-    def upscale_perm_flow_based(self):
+    def upscale_perm_flow_based(self, direction):
         k = 0
         for primal_id, primal in self.primals.iteritems():
             print "{0} / {1}".format(k + 1, len(self.primals))
@@ -506,18 +506,16 @@ class StructuredUpscalingMethods:
                 primal, types.MBHEX)
             v_ids = self.mb.tag_get_data(self.gid_tag,
                                          fine_elems_in_primal).flatten()
-            # v_ids = np.subtract(v_ids, np.min(v_ids))
             v_ids_map = dict(zip(v_ids, np.arange(len(fine_elems_in_primal))))
-            # print v_ids
             std_map = Epetra.Map(len(fine_elems_in_primal), 0, self.comm)
             A = Epetra.CrsMatrix(Epetra.Copy, std_map, 0)
             pres_tag = self.mb.tag_get_handle(
                 "Pressure {0}".format(primal_id), 1, types.MB_TYPE_DOUBLE,
                 types.MB_TAG_SPARSE, True)
             b = Epetra.Vector(std_map)
-
             x = Epetra.Vector(std_map)
             self.mb.tag_set_data(pres_tag, fine_elems_in_primal, np.asarray(b))
+            # should have a [dim] loop in order to make all experiments
             for idx, elem in zip(v_ids, fine_elems_in_primal):
                 adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
                     np.asarray([elem]), 2, 3)
@@ -525,11 +523,12 @@ class StructuredUpscalingMethods:
                                fine_elems_in_primal]
                 adj_volumes_set = set(adj_volumes)
                 boundary = False
+
                 for tag, boundary_elems in self.boundary_meshset.iteritems():
                     if elem in (self.mb.get_entities_by_handle(
-                                self.boundary_meshset[0])):
-                        b[v_ids_map[idx]] = self.mb.tag_get_data(
-                            self.boundary_x_tag, elem)
+                                self.boundary_meshset[direction])): # Set to all three dimensions
+                        b[v_ids_map[idx]] = self.mb.tag_get_data(   # set to all three dimensions
+                            self.boundary_dir[direction], elem)
                         boundary = True
 
                 if boundary:
@@ -550,12 +549,12 @@ class StructuredUpscalingMethods:
                             np.asarray([adj]))
                         N = elem_center - adj_center
                         N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 + N[2] ** 2)
-                        K1proj = np.dot(np.dot(N, K1.reshape([3, 3])), N)
-                        K2proj = np.dot(np.dot(N, K2.reshape([3, 3])), N)
+                        K1proj = 1.0 # np.dot(np.dot(N, K1.reshape([3, 3])), N)
+                        K2proj = 1.0 # np.dot(np.dot(N, K2.reshape([3, 3])), N)
 
-                        dx = np.linalg.norm((elem_center - adj_center)/2)
+                        dl = np.linalg.norm((elem_center - adj_center)/2)
                         K_equiv = (2 * K1proj * K2proj) / (
-                            K1proj * dx + K2proj * dx)
+                            K1proj * dl + K2proj * dl)
                         values.append(- K_equiv)
                     ids = self.mb.tag_get_data(self.gid_tag, adj_volumes)
                     ids_ = [[v_ids_map[ids[elem][0]]][0] for
@@ -572,7 +571,65 @@ class StructuredUpscalingMethods:
             solver.Iterate(1000, 1e-9)
             self.mb.tag_set_data(pres_tag, fine_elems_in_primal,
                                  np.asarray(x))
+            # calculate the flow-rate for each fine volume,
+            # summ and get effective perm
+            flow_rate = []
+            for elem in (self.mb.get_entities_by_handle(
+                        self.boundary_meshset[direction])):
+                if elem in fine_elems_in_primal:
+                    # print adj_volumes
+                    # adj_volumes = [elems for elems in adj_volumes if elems in
+                    #                fine_elems_in_primal]
+                    # print adj_volumes
+                    if self.mb.tag_get_data(pres_tag, elem) == 1.0:
+                        pass
+                    else:
+                        adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
+                                   np.asarray([elem]), 2, 3)
+                        adj_volumes = [elems for elems in adj_volumes if elems
+                                       in fine_elems_in_primal]
+                        adj_volumes_set = set(adj_volumes)
+                        elem_center = self.mesh_topo_util.get_average_position(
+                                    np.asarray([elem]))
+                        for adj in adj_volumes_set:
+                            if self.mb.tag_get_data(pres_tag, adj) == 0.0:
+                                pass
+                            else:
+                                adj_center = self.mesh_topo_util.get_average_position(
+                                             np.asarray([adj]))
+                                adj_pressure = self.mb.tag_get_data(pres_tag,
+                                                                    adj)
+                                N = elem_center - adj_center
+                                N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 +
+                                                N[2] ** 2)
+                                adj_perm = 1.0 # np.dot(N, np.dot(
+                                            # self.mb.tag_get_data(self.perm_tag,
+                                            #                      adj).reshape(
+                                            #                      [3, 3]), N))
+                                elem_perm = 1.0 # np.dot(N, np.dot(
+                                            # self.mb.tag_get_data(self.perm_tag,
+                                            #                      elem).reshape(
+                                            #                      [3, 3]), N))
+                                dl = np.linalg.norm((elem_center -
+                                                     adj_center)/2)
+                                area = 1.0
+                                transmissibility = (2 * adj_perm *
+                                                    elem_perm) / (
+                                    adj_perm * dl + elem_perm * dl)
+                                flow_rate.append(area * transmissibility *
+                                                 adj_pressure / dl)
+        perm = sum(flow_rate) * dl / area
+        return perm
 
+    def flow_based_coarse_perm(self):
+        self.set_local_problem()
+        for dim in range(0, 3):
+            self.upscale_perm_flow_based(dim)
+
+        # self.mb.tag_set_data(self.primal_perm_tag, primal,
+        #                      [primal_perm[0], 0, 0,
+        #                       0, primal_perm[1], 0,
+        #                       0, 0, primal_perm[2]])
 
     def coarse_grid(self):
         # We should include a swithc for either printing coarse grid or fine

@@ -82,8 +82,7 @@ class Preprocessor(object):
         if self.method == "Flow-based":
             print "Setting local boundaries..."
             t0 = time.time()
-            self.SUM.set_local_problem()
-            self.SUM.upscale_perm_flow_based()
+            self.SUM.flow_based_coarse_perm()
             print "took {0}".format(time.time()-t0), "seconds..."
 
         print "Generating coarse scale grid..."
