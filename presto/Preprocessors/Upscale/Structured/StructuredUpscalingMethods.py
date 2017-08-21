@@ -2,7 +2,7 @@ import numpy as np
 import collections
 from pymoab import types
 from pymoab import topo_util
-from PyTrilinos import Epetra, AztecOO, Amesos
+from PyTrilinos import Epetra, AztecOO
 
 
 class StructuredUpscalingMethods:
@@ -523,14 +523,13 @@ class StructuredUpscalingMethods:
                                fine_elems_in_primal]
                 adj_volumes_set = set(adj_volumes)
                 boundary = False
-
                 for tag, boundary_elems in self.boundary_meshset.iteritems():
                     if elem in (self.mb.get_entities_by_handle(
-                                self.boundary_meshset[direction])): # Set to all three dimensions
-                        b[v_ids_map[idx]] = self.mb.tag_get_data(   # set to all three dimensions
+                                self.boundary_meshset[direction])):  # Set to
+                                                                    # all 3D
+                        b[v_ids_map[idx]] = self.mb.tag_get_data(
                             self.boundary_dir[direction], elem)
                         boundary = True
-
                 if boundary:
                     A.InsertGlobalValues(v_ids_map[idx], [1],
                                          [v_ids_map[idx]])
@@ -549,8 +548,8 @@ class StructuredUpscalingMethods:
                             np.asarray([adj]))
                         N = elem_center - adj_center
                         N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 + N[2] ** 2)
-                        K1proj = 1.0 # np.dot(np.dot(N, K1.reshape([3, 3])), N)
-                        K2proj = 1.0 # np.dot(np.dot(N, K2.reshape([3, 3])), N)
+                        K1proj = np.dot(np.dot(N, K1.reshape([3, 3])), N)
+                        K2proj = np.dot(np.dot(N, K2.reshape([3, 3])), N)
 
                         dl = np.linalg.norm((elem_center - adj_center)/2)
                         K_equiv = (2 * K1proj * K2proj) / (
@@ -602,14 +601,14 @@ class StructuredUpscalingMethods:
                                 N = elem_center - adj_center
                                 N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 +
                                                 N[2] ** 2)
-                                adj_perm = 1.0 # np.dot(N, np.dot(
-                                            # self.mb.tag_get_data(self.perm_tag,
-                                            #                      adj).reshape(
-                                            #                      [3, 3]), N))
-                                elem_perm = 1.0 # np.dot(N, np.dot(
-                                            # self.mb.tag_get_data(self.perm_tag,
-                                            #                      elem).reshape(
-                                            #                      [3, 3]), N))
+                                adj_perm = np.dot(N, np.dot(
+                                        self.mb.tag_get_data(self.perm_tag,
+                                                             adj).reshape(
+                                                             [3, 3]), N))
+                                elem_perm = np.dot(N, np.dot(
+                                            self.mb.tag_get_data(self.perm_tag,
+                                                                 elem).reshape(
+                                                                 [3, 3]), N))
                                 dl = np.linalg.norm((elem_center -
                                                      adj_center)/2)
                                 area = 1.0
@@ -630,7 +629,6 @@ class StructuredUpscalingMethods:
         #                      [primal_perm[0], 0, 0,
         #                       0, primal_perm[1], 0,
         #                       0, 0, primal_perm[2]])
-
     def coarse_grid(self):
         # We should include a swithc for either printing coarse grid or fine
         # grid here that is fedy by the .cfg file.
