@@ -21,7 +21,7 @@ class Preprocessor(object):
         self.mesh_size = [int(v) for v in self.values]
 
         self.values = self.structured_configs['block-size']
-        self.block_size = [int(v) for v in self.values]
+        self.block_size = [float(v) for v in self.values]
 
         self.method = self.structured_configs['method']
         if self.method == "Average":
@@ -80,9 +80,10 @@ class Preprocessor(object):
             print "took {0}".format(time.time()-t0), "seconds..."
 
         if self.method == "Flow-based":
-            print "Setting local boundaries..."
+            print "Setting Local Upscaling..."
             t0 = time.time()
             self.SUM.flow_based_coarse_perm()
+            self.SUM.export_data()
             print "took {0}".format(time.time()-t0), "seconds..."
 
         print "Generating coarse scale grid..."
@@ -92,5 +93,5 @@ class Preprocessor(object):
 
         print "Exporting..."
         t0 = time.time()
-        self.SUM.export(self.output_file)
+        # self.SUM.export(self.output_file)
         print "took {0}\n".format(time.time()-t0)

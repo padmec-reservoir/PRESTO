@@ -82,6 +82,20 @@ class StructuredUpscalingMethods:
                 types.MB_TAG_SPARSE, True)
         )
 
+        (self.primal_perm_x_tag,
+         self.primal_perm_y_tag,
+         self.primal_perm_z_tag) = (
+            self.mb.tag_get_handle(
+                "COARSE PERMEABILITY - X Axis", 1, types.MB_TYPE_DOUBLE,
+                types.MB_TAG_SPARSE, True),
+            self.mb.tag_get_handle(
+                "COARSE PERMEABILITY - y Axis", 1, types.MB_TYPE_DOUBLE,
+                types.MB_TAG_SPARSE, True),
+            self.mb.tag_get_handle(
+                "COARSE PERMEABILITY - z Axis", 1, types.MB_TYPE_DOUBLE,
+                types.MB_TAG_SPARSE, True)
+        )
+
         # tag handle for upscaling operation
         self.primal_phi_tag = self.mb.tag_get_handle(
             "PRIMAL_PHI", 1, types.MB_TYPE_DOUBLE,
@@ -358,33 +372,6 @@ class StructuredUpscalingMethods:
             # Store mean phi on the primal meshset and internal elements
             self.mb.tag_set_data(self.primal_phi_tag, primal, primal_mean_phi)
 
-        mesh_size_coarse = self._coarse_dims()
-        with open('coarse_phi.dat', 'w') as coarse_phi:
-            for k in xrange(mesh_size_coarse[2]):
-                coarse_phi.write('-- LAYER  {0}'.format(k+1))
-                coarse_phi.write('\n')
-                for j in xrange(mesh_size_coarse[1]):
-                    coarse_phi.write('-- ROW  {0}'.format(j+1))
-                    coarse_phi.write('\n')
-                    for i in xrange(mesh_size_coarse[0]):
-                        line = 0
-                        while line < mesh_size_coarse[0]:
-
-                            coarse_phi.write('%f' % (self.mb.tag_get_data(
-                                                self.primal_phi_tag,
-                                                self.primals[(i, j, k)])
-                                                   )
-                                             )
-                            coarse_phi.write('        	')
-                            line += 1
-                        coarse_phi.write('%f' % (self.mb.tag_get_data(
-                                            self.primal_phi_tag,
-                                            self.primals[(i, j, k)])
-                                               )
-                                         )
-                        coarse_phi.write('\n')
-            coarse_phi.close()
-
     def upscale_perm_mean(self, average_method):
         self.average_method = average_method
         basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
@@ -497,8 +484,17 @@ class StructuredUpscalingMethods:
                             self.mb.add_entities(
                                 self.boundary_meshset[dim], [el])
 
-    def upscale_perm_flow_based(self, direction):
+    def set_global_problem(self):
+        pass
+
+    def upscale_perm_flow_based(self, dim):
         k = 0
+        area = (self.block_size[1] * self.block_size[2],
+                self.block_size[0] * self.block_size[2],
+                self.block_size[0] * self.block_size[1])
+        self.primal_perm = (self.primal_perm_x_tag,
+                            self.primal_perm_y_tag,
+                            self.primal_perm_z_tag)
         for primal_id, primal in self.primals.iteritems():
             print "{0} / {1}".format(k + 1, len(self.primals))
             k += 1
@@ -524,11 +520,11 @@ class StructuredUpscalingMethods:
                 adj_volumes_set = set(adj_volumes)
                 boundary = False
                 for tag, boundary_elems in self.boundary_meshset.iteritems():
+                    # Set to all 3D experiments
                     if elem in (self.mb.get_entities_by_handle(
-                                self.boundary_meshset[direction])):  # Set to
-                                                                    # all 3D
+                                self.boundary_meshset[dim])):
                         b[v_ids_map[idx]] = self.mb.tag_get_data(
-                            self.boundary_dir[direction], elem)
+                            self.boundary_dir[dim], elem)
                         boundary = True
                 if boundary:
                     A.InsertGlobalValues(v_ids_map[idx], [1],
@@ -550,7 +546,6 @@ class StructuredUpscalingMethods:
                         N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 + N[2] ** 2)
                         K1proj = np.dot(np.dot(N, K1.reshape([3, 3])), N)
                         K2proj = np.dot(np.dot(N, K2.reshape([3, 3])), N)
-
                         dl = np.linalg.norm((elem_center - adj_center)/2)
                         K_equiv = (2 * K1proj * K2proj) / (
                             K1proj * dl + K2proj * dl)
@@ -566,20 +561,16 @@ class StructuredUpscalingMethods:
             A.FillComplete()
             linearProblem = Epetra.LinearProblem(A, x, b)
             solver = AztecOO.AztecOO(linearProblem)
-            solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
-            solver.Iterate(1000, 1e-9)
+            # solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
+            solver.Iterate(100, 1e-9)
             self.mb.tag_set_data(pres_tag, fine_elems_in_primal,
                                  np.asarray(x))
             # calculate the flow-rate for each fine volume,
             # summ and get effective perm
             flow_rate = []
             for elem in (self.mb.get_entities_by_handle(
-                        self.boundary_meshset[direction])):
+                        self.boundary_meshset[dim])):
                 if elem in fine_elems_in_primal:
-                    # print adj_volumes
-                    # adj_volumes = [elems for elems in adj_volumes if elems in
-                    #                fine_elems_in_primal]
-                    # print adj_volumes
                     if self.mb.tag_get_data(pres_tag, elem) == 1.0:
                         pass
                     else:
@@ -611,26 +602,22 @@ class StructuredUpscalingMethods:
                                                                  [3, 3]), N))
                                 dl = np.linalg.norm((elem_center -
                                                      adj_center)/2)
-                                area = 1.0
                                 transmissibility = (2 * adj_perm *
                                                     elem_perm) / (
                                     adj_perm * dl + elem_perm * dl)
-                                flow_rate.append(area * transmissibility *
-                                                 adj_pressure / dl)
-        perm = sum(flow_rate) * dl / area
-        return perm
+                                flow_rate.append(np.asarray(area[dim] *
+                                                            transmissibility *
+                                                 adj_pressure / dl))
+            perm = sum(flow_rate) * dl / area[dim]
+            self.mb.tag_set_data(self.primal_perm[dim], primal, perm)
 
     def flow_based_coarse_perm(self):
         self.set_local_problem()
         for dim in range(0, 3):
             self.upscale_perm_flow_based(dim)
 
-        # self.mb.tag_set_data(self.primal_perm_tag, primal,
-        #                      [primal_perm[0], 0, 0,
-        #                       0, primal_perm[1], 0,
-        #                       0, 0, primal_perm[2]])
     def coarse_grid(self):
-        # We should include a swithc for either printing coarse grid or fine
+        # We should include a switch for either printing coarse grid or fine
         # grid here that is fedy by the .cfg file.
         """
         This will not delete primal grid information prevously calculated,
@@ -661,12 +648,66 @@ class StructuredUpscalingMethods:
                                              self.primals[(i, j, k)]))
                     self.mb.tag_set_data(self.primal_perm_tag, el,
                                          self.mb.tag_get_data(
-                                             self.primal_perm_tag,
+                                             [self.primal_perm[0], 0, 0,
+                                              0, self.primal_perm[1], 0,
+                                              0, 0, self.primal_perm[2]],
                                              self.primals[(i, j, k)]))
                     cur_id += 1
 
-    def export_data(self, data_to_export, file_name):
-        pass
+    def export_data(self):
+        writedir = ('X', 'Y', 'Z')
+        mesh_size_coarse = self._coarse_dims()
+        with open('coarse_phi.dat', 'w') as coarse_phi:
+            coarse_phi.write('PORO')
+            coarse_phi.write('\n')
+            for k in xrange(mesh_size_coarse[2]):
+                coarse_phi.write('-- LAYER  {0}'.format(k+1))
+                coarse_phi.write('\n')
+                for j in xrange(mesh_size_coarse[1]):
+
+                    coarse_phi.write('-- ROW  {0}'.format(j+1))
+                    coarse_phi.write('\n')
+                    for i in xrange(mesh_size_coarse[0]):
+                        if i < mesh_size_coarse[0] - 1:
+                            coarse_phi.write('%f' % (self.mb.tag_get_data(
+                                                self.primal_phi_tag,
+                                                self.primals[(i, j, k)])
+                                                   )
+                                             )
+                            coarse_phi.write('        	')
+                        else:
+                            coarse_phi.write('%f' % (self.mb.tag_get_data(
+                                         self.primal_phi_tag,
+                                         self.primals[(i, j, k)])
+                                               )
+                                         )
+                            coarse_phi.write('\n')
+            coarse_phi.close()
+        with open('coarse_perm.dat', 'w') as coarse_perm:
+            for dim in range(0, 3):
+                coarse_perm.write('PERM{0}'.format(writedir[dim]))
+                coarse_perm.write('\n')
+                for k in xrange(mesh_size_coarse[2]):
+                    coarse_perm.write('-- LAYER  {0}'.format(k+1))
+                    coarse_perm.write('\n')
+                    for j in xrange(mesh_size_coarse[1]):
+                        coarse_perm.write('-- ROW  {0}'.format(j+1))
+                        coarse_perm.write('\n')
+                        for i in xrange(mesh_size_coarse[0]):
+                            if i < mesh_size_coarse[0] - 1:
+
+                                coarse_perm.write(
+                                    '%f' % (self.mb.tag_get_data(
+                                        self.primal_perm[dim],
+                                        self.primals[(i, j, k)])))
+                                coarse_perm.write('        	')
+                            else:
+                                coarse_perm.write(
+                                    '%f' % (self.mb.tag_get_data(
+                                        self.primal_perm[dim],
+                                        self.primals[(i, j, k)])))
+                                coarse_perm.write('\n')
+            coarse_perm.close()
 
     def export(self, outfile):
         self.mb.write_file(outfile)
