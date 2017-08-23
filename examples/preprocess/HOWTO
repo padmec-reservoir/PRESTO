@@ -12,9 +12,12 @@ If you are running on Docker you you should have pulled the image gpkc/elliptic.
 Start docker
 $ sudo systemctl start docker
 run docker as follows
-$ sudo docker run -v $PWD:/elliptic gpkc/elliptic bash -c "cd /elliptic; python -m
+$ sudo docker run -v $PWD:/elliptic padmec/elliptic:1.0 bash -c "cd /elliptic; python -m
 elliptic.Preprocess <config>"
 
 For example, under the upscale example folder, run the following command:
-$ sudo docker run -v $PWD:/elliptic gpkc/elliptic bash -c "cd /elliptic; python -m
+$ sudo docker run -v $PWD:/elliptic padmec/elliptic:1.0 bash -c "cd /elliptic; python -m
 elliptic.Preprocess structured.cfg"
+
+Note that for the upscaling preprocessor, you should have a perm.dat and phi.dat file, as
+an example, use the SPE CSP dataset for model 2
