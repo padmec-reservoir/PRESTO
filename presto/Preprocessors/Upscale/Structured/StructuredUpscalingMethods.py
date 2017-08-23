@@ -1,3 +1,4 @@
+
 import numpy as np
 import collections
 from pymoab import types
@@ -255,7 +256,6 @@ class StructuredUpscalingMethods:
                     el = self.mb.create_element(types.MBHEX, hexa)
 
                     self.mb.tag_set_data(self.gid_tag, el, cur_id)
-                    cur_id += 1
                     # Fine Global ID
                     self.mb.tag_set_data(self.gid_tag, el, cur_id)
                     # Fine Porosity
@@ -271,6 +271,7 @@ class StructuredUpscalingMethods:
                                                self.mesh_size[1] *
                                                self.mesh_size[2]]])
                     self.elems.append(el)
+                    cur_id += 1
 
                     # Create primal coarse grid
                     try:
@@ -291,7 +292,6 @@ class StructuredUpscalingMethods:
 
     def store_primal_adj(self):
         # TODO: - Should go on Common
-
         min_coarse_ids = np.array([0, 0, 0])
         max_coarse_ids = np.array([max(self.primal_ids[0]),
                                    max(self.primal_ids[1]),
@@ -451,170 +451,221 @@ class StructuredUpscalingMethods:
         primal_centroid = primal_centroid // 8
         return primal_centroid
 
-    def set_local_problem(self):  # Other parameters might go in as an input
-        # create specific tags for setting local problems
+    def get_boundary_meshsets(self):
+
         self.boundary_dir = (self.boundary_x_tag,
                              self.boundary_y_tag,
                              self.boundary_z_tag
                              )
-        self.boundary_meshset = {}
+        self.boundary_meshsets = {}
         for dim in range(0, 3):
-            self.boundary_meshset[dim] = self.mb.create_meshset()
-            for k in xrange(self.mesh_size[2]):
-                for j in xrange(self.mesh_size[1]):
-                    for i in xrange(self.mesh_size[0]):
+            for k, idz in zip(xrange(self.mesh_size[2]),
+                              self.primal_ids[2]):
+                for j, idy in zip(xrange(self.mesh_size[1]),
+                                  self.primal_ids[1]):
+                    for i, idx in zip(xrange(self.mesh_size[0]),
+                                      self.primal_ids[0]):
                         el = self._get_elem_by_ijk((i, j, k))
                         if (i, j, k)[dim] == (self.coarse_ratio[dim] *
                                               self.primal_ids[dim][(i, j,
-                                                                    k)[dim]]):
+                                                                   k)[dim]]):
                             self.mb.tag_set_data(self.boundary_dir[dim],
                                                  el, 1.0)
-                            self.mb.add_entities(
-                                self.boundary_meshset[dim], [el]
-                                )
+                            try:
+                                boundary_meshset = self.boundary_meshsets[
+                                                   (idx, idy, idz), dim]
+                                self.mb.add_entities(boundary_meshset, [el])
+
+                            except KeyError:
+                                boundary_meshset = self.mb.create_meshset()
+                                self.boundary_meshsets[
+                                    (idx, idy, idz), dim] = boundary_meshset
+                                self.mb.add_entities(boundary_meshset, [el])
 
                         if (i, j, k)[dim] == (self.coarse_ratio[dim] *
                                               self.primal_ids[dim][
                                                   (i, j, k)[dim]] +
                                               self._coarsening_ratio(dim)[
                                                   self.primal_ids[dim][
-                                                      (i, j, k)[dim]]] - 1):
+                                                   (i, j, k)[dim]]] - 1):
                             self.mb.tag_set_data(
                                 self.boundary_dir[dim], el, 0.0)
-                            self.mb.add_entities(
-                                self.boundary_meshset[dim], [el])
+
+                            try:
+                                boundary_meshset = self.boundary_meshsets[
+                                                   (idx, idy, idz), dim]
+                                self.mb.add_entities(boundary_meshset, [el])
+
+                            except KeyError:
+                                boundary_meshset = self.mb.create_meshset()
+                                self.boundary_meshsets[
+                                    (idx, idy, idz), dim] = boundary_meshset
+                                self.mb.add_entities(boundary_meshset, [el])
+
+    def set_local_problem(self, dim):  # Other parameters might be input
+        # create specific tags for setting local problems
+        self.boundary_dir = (self.boundary_x_tag,
+                             self.boundary_y_tag,
+                             self.boundary_z_tag
+                             )
+        boundary_meshset = self.mb.create_meshset()
+        for k in xrange(self.mesh_size[2]):
+            for j in xrange(self.mesh_size[1]):
+                for i in xrange(self.mesh_size[0]):
+                    el = self._get_elem_by_ijk((i, j, k))
+                    if (i, j, k)[dim] == (self.coarse_ratio[dim] *
+                                          self.primal_ids[dim][(i, j,
+                                                                k)[dim]]):
+                        self.mb.tag_set_data(self.boundary_dir[dim],
+                                             el, 1.0)
+                        self.mb.add_entities(
+                            boundary_meshset[dim], [el]
+                            )
+
+                    if (i, j, k)[dim] == (self.coarse_ratio[dim] *
+                                          self.primal_ids[dim][
+                                                  (i, j, k)[dim]] +
+                                          self._coarsening_ratio(dim)[
+                                          self.primal_ids[dim][(i, j, k)[dim]
+                                                               ]] - 1):
+                        self.mb.tag_set_data(
+                            self.boundary_dir[dim], el, 0.0)
+                        self.mb.add_entities(
+                            boundary_meshset[dim], [el])
 
     def set_global_problem(self):
         pass
 
-    def upscale_perm_flow_based(self, dim):
-        k = 0
+    def upscale_perm_flow_based(self, domain, dim, boundary_meshset):
         area = (self.block_size[1] * self.block_size[2],
                 self.block_size[0] * self.block_size[2],
-                self.block_size[0] * self.block_size[1])
+                self.block_size[0] * self.block_size[1],
+                )
+        pres_tag = self.mb.tag_get_handle(
+                   "Pressure", 1, types.MB_TYPE_DOUBLE,
+                   types.MB_TAG_SPARSE, True)
+        std_map = Epetra.Map(len(domain), 0, self.comm)
+        linear_vals = np.arange(0, len(domain))
+        id_map = dict(zip(domain, linear_vals))
+        boundary_elms = set()
+
+        b = Epetra.Vector(std_map)
+        x = Epetra.Vector(std_map)
+
+        A = Epetra.CrsMatrix(Epetra.Copy, std_map, 3)
+        """
+        for boundary_meshset in boundary_meshsets:
+            # print self.mb.get_entities_by_handle(boundary_meshset)
+            print boundary_meshset
+            boundary_elems = self.mb.get_entities_by_handle(boundary_meshset)
+            print boundary_elems
+        """
+        for elem in boundary_meshset:
+            if elem in boundary_elms:
+                continue
+            boundary_elms.add(elem)
+            idx = id_map[elem]
+            A.InsertGlobalValues(idx, [1], [idx])
+            b[idx] = self.mb.tag_get_data(self.boundary_dir[dim], elem,
+                                          flat=True)
+
+        self.mb.tag_set_data(pres_tag, domain, np.repeat(0.0, len(domain)))
+
+        for elem in (set(domain) ^ boundary_elms):
+
+            adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
+                          np.asarray([elem]), 2, 3, 0)
+            adj_volumes = [elems for elems in adj_volumes if elems in domain]
+            adj_volumes_set = set(adj_volumes)
+
+            elem_center = self.mesh_topo_util.get_average_position(
+                                   np.asarray([elem]))
+            K1 = self.mb.tag_get_data(self.perm_tag, [elem], flat=True)
+            adj_perms = []
+            for adjacencies in range(len(adj_volumes)):
+                adj_perms.append(self.mb.tag_get_data(
+                                 self.perm_tag, adj_volumes, flat=True)[
+                                 adjacencies*9:(adjacencies+1)*9])
+            values = []
+            ids = []
+            for K2, adj in zip(adj_perms, adj_volumes_set):
+                adj_center = self.mesh_topo_util.get_average_position(
+                             np.asarray([adj]))
+                N = elem_center - adj_center
+                N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 + N[2] ** 2)
+                K1proj = np.dot(np.dot(N, K1.reshape([3, 3])), N)
+                K2proj = np.dot(np.dot(N, K2.reshape([3, 3])), N)
+                dl = np.linalg.norm((elem_center - adj_center)/2)
+                K_eq = (2 * K1proj * K2proj) / (K1proj * dl + K2proj * dl)
+                values.append(- K_eq)
+                if adj in id_map:
+                    ids.append(id_map[adj])
+            values.append(-sum(values))
+            idx = id_map[elem]
+            ids.append(idx)
+            A.InsertGlobalValues(idx, values, ids)
+        A.FillComplete()
+        linearProblem = Epetra.LinearProblem(A, x, b)
+        solver = AztecOO.AztecOO(linearProblem)
+        solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
+        solver.Iterate(100, 1e-9)
+        self.mb.tag_set_data(pres_tag, domain, np.asarray(x))
+
+        # Get the flux
+        flow_rate = 0.0
+        total_area = 0.0
+        for elem in boundary_meshset:
+            elem_center = self.mesh_topo_util.get_average_position(
+                          np.asarray([elem]))
+            adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
+                     np.asarray([elem]), 2, 3)
+            adj_volumes_set = set(adj_volumes).intersection(set(domain))
+            adj_to_boundary_volumes = set()
+            for el in adj_volumes_set:
+                if el in boundary_meshset:
+                    adj_to_boundary_volumes.add(el)
+            adj_volumes_set = adj_volumes_set - adj_to_boundary_volumes
+            for adj in adj_volumes_set:
+                adj_center = self.mesh_topo_util.get_average_position(
+                                 np.asarray([adj]))
+                N = elem_center - adj_center
+                N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 + N[2] ** 2)
+                adj_pres = self.mb.tag_get_data(pres_tag, adj)
+                adj_perm = np.dot(N, np.dot(self.mb.tag_get_data(
+                                  self.perm_tag, adj).reshape(
+                                  [3, 3]), N))
+                elem_perm = np.dot(N, np.dot(self.mb.tag_get_data(
+                                   self.perm_tag, elem).reshape(
+                                   [3, 3]), N))
+                dl = np.linalg.norm((elem_center - adj_center)/2)
+                K_equiv = (2 * adj_perm * elem_perm) / (adj_perm * dl +
+                                                        elem_perm * dl)
+
+                flow_rate = flow_rate + area[dim] * K_equiv * adj_pres / dl
+                total_area = total_area + area[dim]
+            perm = flow_rate * dl / total_area
+        return perm
+
+    def flow_based_coarse_perm(self):
+
         self.primal_perm = (self.primal_perm_x_tag,
                             self.primal_perm_y_tag,
                             self.primal_perm_z_tag)
-        for primal_id, primal in self.primals.iteritems():
-            print "{0} / {1}".format(k + 1, len(self.primals))
-            k += 1
-            fine_elems_in_primal = self.mb.get_entities_by_type(
-                primal, types.MBHEX)
-            v_ids = self.mb.tag_get_data(self.gid_tag,
-                                         fine_elems_in_primal).flatten()
-            v_ids_map = dict(zip(v_ids, np.arange(len(fine_elems_in_primal))))
-            std_map = Epetra.Map(len(fine_elems_in_primal), 0, self.comm)
-            A = Epetra.CrsMatrix(Epetra.Copy, std_map, 0)
-            pres_tag = self.mb.tag_get_handle(
-                "Pressure {0}".format(primal_id), 1, types.MB_TYPE_DOUBLE,
-                types.MB_TAG_SPARSE, True)
-            b = Epetra.Vector(std_map)
-            x = Epetra.Vector(std_map)
-            self.mb.tag_set_data(pres_tag, fine_elems_in_primal, np.asarray(b))
-            # should have a [dim] loop in order to make all experiments
-            for idx, elem in zip(v_ids, fine_elems_in_primal):
-                adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
-                    np.asarray([elem]), 2, 3)
-                adj_volumes = [elems for elems in adj_volumes if elems in
-                               fine_elems_in_primal]
-                adj_volumes_set = set(adj_volumes)
-                boundary = False
-                for tag, boundary_elems in self.boundary_meshset.iteritems():
-                    # Set to all 3D experiments
-                    if elem in (self.mb.get_entities_by_handle(
-                                self.boundary_meshset[dim])):
-                        b[v_ids_map[idx]] = self.mb.tag_get_data(
-                            self.boundary_dir[dim], elem)
-                        boundary = True
-                if boundary:
-                    A.InsertGlobalValues(v_ids_map[idx], [1],
-                                         [v_ids_map[idx]])
-                if not boundary:
-                    elem_center = self.mesh_topo_util.get_average_position(
-                        np.asarray([elem]))
-                    K1 = self.mb.tag_get_data(self.perm_tag, [elem], flat=True)
-                    adj_perms = []
-                    for adjacencies in range(len(adj_volumes)):
-                        adj_perms.append(self.mb.tag_get_data(
-                            self.perm_tag, adj_volumes, flat=True)[
-                                adjacencies*9:(adjacencies+1)*9])
-                    values = []
-                    for K2, adj in zip(adj_perms, adj_volumes_set):
-                        adj_center = self.mesh_topo_util.get_average_position(
-                            np.asarray([adj]))
-                        N = elem_center - adj_center
-                        N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 + N[2] ** 2)
-                        K1proj = np.dot(np.dot(N, K1.reshape([3, 3])), N)
-                        K2proj = np.dot(np.dot(N, K2.reshape([3, 3])), N)
-                        dl = np.linalg.norm((elem_center - adj_center)/2)
-                        K_equiv = (2 * K1proj * K2proj) / (
-                            K1proj * dl + K2proj * dl)
-                        values.append(- K_equiv)
-                    ids = self.mb.tag_get_data(self.gid_tag, adj_volumes)
-                    ids_ = [[v_ids_map[ids[elem][0]]][0] for
-                            elem in range(len(ids))]
-                    values = np.append(values, - (np.sum(values)))
-                    np.asarray(ids_.append(v_ids_map[idx]))
-                    ids = np.asarray(np.append(ids, v_ids_map[idx]),
-                                     dtype='int32')
-                    A.InsertGlobalValues(v_ids_map[idx], values, ids_)
-            A.FillComplete()
-            linearProblem = Epetra.LinearProblem(A, x, b)
-            solver = AztecOO.AztecOO(linearProblem)
-            # solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
-            solver.Iterate(100, 1e-9)
-            self.mb.tag_set_data(pres_tag, fine_elems_in_primal,
-                                 np.asarray(x))
-            # calculate the flow-rate for each fine volume,
-            # summ and get effective perm
-            flow_rate = []
-            for elem in (self.mb.get_entities_by_handle(
-                        self.boundary_meshset[dim])):
-                if elem in fine_elems_in_primal:
-                    if self.mb.tag_get_data(pres_tag, elem) == 1.0:
-                        pass
-                    else:
-                        adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
-                                   np.asarray([elem]), 2, 3)
-                        adj_volumes = [elems for elems in adj_volumes if elems
-                                       in fine_elems_in_primal]
-                        adj_volumes_set = set(adj_volumes)
-                        elem_center = self.mesh_topo_util.get_average_position(
-                                    np.asarray([elem]))
-                        for adj in adj_volumes_set:
-                            if self.mb.tag_get_data(pres_tag, adj) == 0.0:
-                                pass
-                            else:
-                                adj_center = self.mesh_topo_util.get_average_position(
-                                             np.asarray([adj]))
-                                adj_pressure = self.mb.tag_get_data(pres_tag,
-                                                                    adj)
-                                N = elem_center - adj_center
-                                N = N / np.sqrt(N[0] ** 2 + N[1] ** 2 +
-                                                N[2] ** 2)
-                                adj_perm = np.dot(N, np.dot(
-                                        self.mb.tag_get_data(self.perm_tag,
-                                                             adj).reshape(
-                                                             [3, 3]), N))
-                                elem_perm = np.dot(N, np.dot(
-                                            self.mb.tag_get_data(self.perm_tag,
-                                                                 elem).reshape(
-                                                                 [3, 3]), N))
-                                dl = np.linalg.norm((elem_center -
-                                                     adj_center)/2)
-                                transmissibility = (2 * adj_perm *
-                                                    elem_perm) / (
-                                    adj_perm * dl + elem_perm * dl)
-                                flow_rate.append(np.asarray(area[dim] *
-                                                            transmissibility *
-                                                 adj_pressure / dl))
-            perm = sum(flow_rate) * dl / area[dim]
-            self.mb.tag_set_data(self.primal_perm[dim], primal, perm)
+        self.get_boundary_meshsets()
 
-    def flow_based_coarse_perm(self):
-        self.set_local_problem()
-        for dim in range(0, 3):
-            self.upscale_perm_flow_based(dim)
+        for primal_id, primal in self.primals.iteritems():
+            print "iterating over meshset {0}".format(primal_id)
+            fine_elems_in_primal = self.mb.get_entities_by_type(
+                    primal, types.MBHEX)
+            for dim in range(0, 3):
+                self.mb.add_child_meshset(self.primals[(primal_id)],
+                                          self.boundary_meshsets[
+                                          primal_id, dim])
+                boundary = self.mb.get_entities_by_handle(np.asarray(
+                           self.boundary_meshsets[primal_id, dim]))
+                perm = self.upscale_perm_flow_based(fine_elems_in_primal, dim,
+                                                    boundary)
+                self.mb.tag_set_data(self.primal_perm[dim], primal, perm)
 
     def coarse_grid(self):
         # We should include a switch for either printing coarse grid or fine
