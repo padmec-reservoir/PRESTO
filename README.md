@@ -10,9 +10,9 @@
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/gpkc/ELLIPTIc/master/LICENSE)
 
 # Description
-**PRESTO**: The Python REservoir Simulation Toolbox for flow simulation and diagnostics in porous media. PRESTO Currently deals with single phase fluid flow in highly heterogeneous and anisitropic porous media in two or three dimensions. So far, PRESTO's main features are:
+**PRESTO**: The Python REservoir Simulation Toolbox for flow simulation and diagnostics in porous media. PRESTO Currently deals with single phase fluid flow in highly heterogeneous and orthotropic porous media in up to three dimensions. So far, PRESTO's main features are:
 * Preprocessor for threedimensional Classic Multiscale simulation;
-* Power Averaging upscaling techniques (arithmetic mean, harmonic mean geometricmean);
+* Power Averaging upscaling techniques (arithmetic mean, harmonic mean, geometricmean);
 * Local upscaling with fixed pressure boundary conditions;
 * Fine grid and Coarse grid generation for structured TPFA simulations.
 
