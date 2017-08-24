@@ -3,7 +3,7 @@ import numpy as np
 import collections
 from pymoab import types
 from pymoab import topo_util
-from PyTrilinos import Epetra, AztecOO
+from PyTrilinos import Epetra, AztecOO  # , ML
 
 
 class StructuredUpscalingMethods:
@@ -49,6 +49,11 @@ class StructuredUpscalingMethods:
 
         # Pytrilinos boilerplate
         self.comm = Epetra.PyComm()
+        self.mlList = {"max levels": 3,
+                       "output": 10,
+                       "smoother: type": "symmetric Gauss-Seidel",
+                       "aggregation: type": "Uncoupled"
+                       }
 
     def create_tags(self):
         # TODO: - Should go on Common (?)
@@ -112,11 +117,14 @@ class StructuredUpscalingMethods:
             types.MB_TAG_SPARSE, True)
 
         # either shoud go or put other directions..., I...
-        """
+
         self.abs_perm_x_tag = self.mb.tag_get_handle(
             "ABS_PERM_X", 1, types.MB_TYPE_DOUBLE,
             types.MB_TAG_SPARSE, True)
-        """
+
+        self.abs_perm_fine_x_tag = self.mb.tag_get_handle(
+            "ABS_PERM_X_FINE", 1, types.MB_TYPE_DOUBLE,
+            types.MB_TAG_SPARSE, True)
 
         self.fine_to_primal_tag = self.mb.tag_get_handle(
             "FINE_TO_PRIMAL", 1, types.MB_TYPE_HANDLE,
@@ -270,6 +278,8 @@ class StructuredUpscalingMethods:
                         0, 0, self.perm_values[cur_id + 2*self.mesh_size[0] *
                                                self.mesh_size[1] *
                                                self.mesh_size[2]]])
+                    self.mb.tag_set_data(self.abs_perm_fine_x_tag, el,
+                                         self.perm_values[cur_id])
                     self.elems.append(el)
                     cur_id += 1
 
@@ -285,6 +295,7 @@ class StructuredUpscalingMethods:
                         self.mb.add_entities(primal, [el])
                         self.mb.tag_set_data(
                             self.fine_to_primal_tag, el, primal)
+                        # do a 'if flow based generate mesh bc over here'
         primal_id = 0
         for primal in self.primals.values():
             self.mb.tag_set_data(self.primal_id_tag, primal, primal_id)
@@ -373,6 +384,9 @@ class StructuredUpscalingMethods:
             self.mb.tag_set_data(self.primal_phi_tag, primal, primal_mean_phi)
 
     def upscale_perm_mean(self, average_method):
+        self.primal_perm = (self.primal_perm_x_tag,
+                            self.primal_perm_y_tag,
+                            self.primal_perm_z_tag)
         self.average_method = average_method
         basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
         perm = []
@@ -387,16 +401,20 @@ class StructuredUpscalingMethods:
                 perm = [(np.dot(np.dot(tensor, basis[dim]), basis[dim]))
                         for tensor in primal_perm]
                 if average_method == 'Arithmetic':
-                    primal_perm[dim] = np.mean(perm[dim])
+                    primal_perm[dim] = np.mean(perm)
                 elif average_method == 'Geometric':
                     primal_perm[dim] = np.prod(np.asarray(
-                        perm[dim])) ** (1/len(np.asarray(perm[dim])))
+                        perm)) ** len(1 / np.asarray(perm))
                 elif average_method == 'Harmonic':
                     primal_perm[dim] = len(np.asarray(
-                        perm[dim]))/sum(1/np.asarray(perm[dim]))
+                        perm)) / sum(1/np.asarray(perm))
                 else:
                     print "Choose either Arithmetic, Geometric or Harmonic."
                     exit()
+                print dim, primal_perm[dim]
+
+                perm = primal_perm[dim]
+                self.mb.tag_set_data(self.primal_perm[dim], primal, perm)
 
             self.mb.tag_set_data(self.primal_perm_tag, primal,
                                  [primal_perm[0], 0, 0,
@@ -502,41 +520,11 @@ class StructuredUpscalingMethods:
                                     (idx, idy, idz), dim] = boundary_meshset
                                 self.mb.add_entities(boundary_meshset, [el])
 
-    def set_local_problem(self, dim):  # Other parameters might be input
-        # create specific tags for setting local problems
-        self.boundary_dir = (self.boundary_x_tag,
-                             self.boundary_y_tag,
-                             self.boundary_z_tag
-                             )
-        boundary_meshset = self.mb.create_meshset()
-        for k in xrange(self.mesh_size[2]):
-            for j in xrange(self.mesh_size[1]):
-                for i in xrange(self.mesh_size[0]):
-                    el = self._get_elem_by_ijk((i, j, k))
-                    if (i, j, k)[dim] == (self.coarse_ratio[dim] *
-                                          self.primal_ids[dim][(i, j,
-                                                                k)[dim]]):
-                        self.mb.tag_set_data(self.boundary_dir[dim],
-                                             el, 1.0)
-                        self.mb.add_entities(
-                            boundary_meshset[dim], [el]
-                            )
-
-                    if (i, j, k)[dim] == (self.coarse_ratio[dim] *
-                                          self.primal_ids[dim][
-                                                  (i, j, k)[dim]] +
-                                          self._coarsening_ratio(dim)[
-                                          self.primal_ids[dim][(i, j, k)[dim]
-                                                               ]] - 1):
-                        self.mb.tag_set_data(
-                            self.boundary_dir[dim], el, 0.0)
-                        self.mb.add_entities(
-                            boundary_meshset[dim], [el])
-
     def set_global_problem(self):
         pass
 
     def upscale_perm_flow_based(self, domain, dim, boundary_meshset):
+        self.average_method = 'flow-based'
         area = (self.block_size[1] * self.block_size[2],
                 self.block_size[0] * self.block_size[2],
                 self.block_size[0] * self.block_size[1],
@@ -553,13 +541,7 @@ class StructuredUpscalingMethods:
         x = Epetra.Vector(std_map)
 
         A = Epetra.CrsMatrix(Epetra.Copy, std_map, 3)
-        """
-        for boundary_meshset in boundary_meshsets:
-            # print self.mb.get_entities_by_handle(boundary_meshset)
-            print boundary_meshset
-            boundary_elems = self.mb.get_entities_by_handle(boundary_meshset)
-            print boundary_elems
-        """
+
         for elem in boundary_meshset:
             if elem in boundary_elms:
                 continue
@@ -605,13 +587,25 @@ class StructuredUpscalingMethods:
             ids.append(idx)
             A.InsertGlobalValues(idx, values, ids)
         A.FillComplete()
+
+        """
+        prec = ML.MultiLevelPreconditioner(A, False)
+        prec.SetParameterList(mlList)
+        solver = AztecOO.AztecOO(A, x, b)
+        solver.SetPrecOperator(prec)
+        solver.SetAztecOption(AztecOO.AZ_solver, AztecOO.AZ_cg)
+        solver.SetAztecOption(AztecOO.AZ_output, 16)
+        solver.Iterate(1550, 1e-5)
+        """
+
         linearProblem = Epetra.LinearProblem(A, x, b)
         solver = AztecOO.AztecOO(linearProblem)
         solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
-        solver.Iterate(100, 1e-9)
+        solver.Iterate(200, 1e-9)
+
         self.mb.tag_set_data(pres_tag, domain, np.asarray(x))
 
-        # Get the flux
+        # Get the flux - should break down in another part
         flow_rate = 0.0
         total_area = 0.0
         for elem in boundary_meshset:
@@ -657,6 +651,7 @@ class StructuredUpscalingMethods:
             print "iterating over meshset {0}".format(primal_id)
             fine_elems_in_primal = self.mb.get_entities_by_type(
                     primal, types.MBHEX)
+            # The A matrix should be called here
             for dim in range(0, 3):
                 self.mb.add_child_meshset(self.primals[(primal_id)],
                                           self.boundary_meshsets[
@@ -691,32 +686,38 @@ class StructuredUpscalingMethods:
                     el = self.mb.create_element(types.MBHEX, hexa)
 
         # Assign coarse scale properties previously calculated
+
                     self.mb.tag_set_data(
                         self.coarse_gid_tag, el, cur_id)
                     self.mb.tag_set_data(self.primal_phi_tag, el,
                                          self.mb.tag_get_data(
                                              self.primal_phi_tag,
                                              self.primals[(i, j, k)]))
-                    self.mb.tag_set_data(self.primal_perm_tag, el,
-                                         self.mb.tag_get_data(
-                                             [self.primal_perm[0], 0, 0,
-                                              0, self.primal_perm[1], 0,
-                                              0, 0, self.primal_perm[2]],
-                                             self.primals[(i, j, k)]))
+                    self.mb.tag_set_data(self.primal_perm_tag, el, [
+                        self.mb.tag_get_data(self.primal_perm[0],
+                                             self.primals[(i, j, k)]), 0, 0,
+                        0, self.mb.tag_get_data(self.primal_perm[1],
+                                                self.primals[(i, j, k)]), 0, 0,
+                        0, self.mb.tag_get_data(self.primal_perm[2],
+                                                self.primals[(i, j, k)])])
+                    self.mb.tag_set_data(self.abs_perm_x_tag, el,
+                                         self.mb.tag_get_data(self.primal_perm[
+                                             0], self.primals[(i, j, k)]))
                     cur_id += 1
 
     def export_data(self):
-        writedir = ('X', 'Y', 'Z')
+        writedir = ('I', 'J', 'K')
         mesh_size_coarse = self._coarse_dims()
-        with open('coarse_phi.dat', 'w') as coarse_phi:
-            coarse_phi.write('PORO')
+        with open('coarse_phi{0}_{1}.dat'.format(
+                  self.coarse_ratio, self.average_method), 'w') as coarse_phi:
+            coarse_phi.write('*POR *ALL')
             coarse_phi.write('\n')
             for k in xrange(mesh_size_coarse[2]):
-                coarse_phi.write('-- LAYER  {0}'.format(k+1))
+                # coarse_phi.write('-- LAYER  {0}'.format(k+1))
                 coarse_phi.write('\n')
                 for j in xrange(mesh_size_coarse[1]):
 
-                    coarse_phi.write('-- ROW  {0}'.format(j+1))
+                    # coarse_phi.write('-- ROW  {0}'.format(j+1))
                     coarse_phi.write('\n')
                     for i in xrange(mesh_size_coarse[0]):
                         if i < mesh_size_coarse[0] - 1:
@@ -734,15 +735,16 @@ class StructuredUpscalingMethods:
                                          )
                             coarse_phi.write('\n')
             coarse_phi.close()
-        with open('coarse_perm.dat', 'w') as coarse_perm:
+        with open('coarse_perm{0}_{1}.dat'.format(
+                  self.coarse_ratio, self.average_method), 'w') as coarse_perm:
             for dim in range(0, 3):
-                coarse_perm.write('PERM{0}'.format(writedir[dim]))
+                coarse_perm.write('*PERM{0} *ALL'.format(writedir[dim]))
                 coarse_perm.write('\n')
                 for k in xrange(mesh_size_coarse[2]):
-                    coarse_perm.write('-- LAYER  {0}'.format(k+1))
+                    # coarse_perm.write('-- LAYER  {0}'.format(k+1))
                     coarse_perm.write('\n')
                     for j in xrange(mesh_size_coarse[1]):
-                        coarse_perm.write('-- ROW  {0}'.format(j+1))
+                        # coarse_perm.write('-- ROW  {0}'.format(j+1))
                         coarse_perm.write('\n')
                         for i in xrange(mesh_size_coarse[0]):
                             if i < mesh_size_coarse[0] - 1:

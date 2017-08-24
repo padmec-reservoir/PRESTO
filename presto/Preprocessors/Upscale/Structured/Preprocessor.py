@@ -83,15 +83,15 @@ class Preprocessor(object):
             print "Setting Local Upscaling..."
             t0 = time.time()
             self.SUM.flow_based_coarse_perm()
-            # self.SUM.export_data()
             print "took {0}".format(time.time()-t0), "seconds..."
 
         print "Generating coarse scale grid..."
         t0 = time.time()
-        # self.SUM.coarse_grid()
+        self.SUM.coarse_grid()
         print "took {0}".format(time.time()-t0), "seconds..."
 
         print "Exporting..."
         t0 = time.time()
-        # self.SUM.export(self.output_file)
+        self.SUM.export(self.output_file)
+        self.SUM.export_data()
         print "took {0}\n".format(time.time()-t0)
