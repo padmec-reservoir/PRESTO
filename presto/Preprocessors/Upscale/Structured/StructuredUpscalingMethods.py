@@ -1,9 +1,10 @@
 
 import numpy as np
 import collections
+import time
 from pymoab import types
 from pymoab import topo_util
-from PyTrilinos import Epetra, AztecOO  # , ML
+from PyTrilinos import Epetra, AztecOO, ML
 
 
 class StructuredUpscalingMethods:
@@ -20,11 +21,12 @@ class StructuredUpscalingMethods:
             List or array containing three values indicating the constant
             increments of vertex coordinates in x, y and z.
         """
-    def __init__(self, coarse_ratio, mesh_size, block_size, moab):
+    def __init__(self, coarse_ratio, mesh_size, block_size, method, moab):
 
         self.coarse_ratio = coarse_ratio
         self.mesh_size = mesh_size
         self.block_size = block_size
+        self.method = method
 
         self.verts = None  # Array containing MOAB vertex entities
         self.elems = []  # List containing MOAB volume entities
@@ -295,7 +297,9 @@ class StructuredUpscalingMethods:
                         self.mb.add_entities(primal, [el])
                         self.mb.tag_set_data(
                             self.fine_to_primal_tag, el, primal)
+
                         # do a 'if flow based generate mesh bc over here'
+
         primal_id = 0
         for primal in self.primals.values():
             self.mb.tag_set_data(self.primal_id_tag, primal, primal_id)
@@ -411,7 +415,6 @@ class StructuredUpscalingMethods:
                 else:
                     print "Choose either Arithmetic, Geometric or Harmonic."
                     exit()
-                print dim, primal_perm[dim]
 
                 perm = primal_perm[dim]
                 self.mb.tag_set_data(self.primal_perm[dim], primal, perm)
@@ -542,6 +545,7 @@ class StructuredUpscalingMethods:
 
         A = Epetra.CrsMatrix(Epetra.Copy, std_map, 3)
 
+        t0 = time.time()
         for elem in boundary_meshset:
             if elem in boundary_elms:
                 continue
@@ -552,7 +556,7 @@ class StructuredUpscalingMethods:
                                           flat=True)
 
         self.mb.tag_set_data(pres_tag, domain, np.repeat(0.0, len(domain)))
-
+        t1 = time.time()
         for elem in (set(domain) ^ boundary_elms):
 
             adj_volumes = self.mesh_topo_util.get_bridge_adjacencies(
@@ -587,12 +591,20 @@ class StructuredUpscalingMethods:
             ids.append(idx)
             A.InsertGlobalValues(idx, values, ids)
         A.FillComplete()
-
+        t2 = time.time()
+        print """Filling matrix. Axis = {0} (0 = X, 1 = Y, 0 = Z); Setting
+        Boundary conditions took {1} seconds, Setting inner elems
+        took {2} seconds...""".format(dim, t1 - t0, t2 - t1)
         """
         prec = ML.MultiLevelPreconditioner(A, False)
-        prec.SetParameterList(mlList)
-        solver = AztecOO.AztecOO(A, x, b)
+        prec.SetParameterList(self.mlList)
+        prec.ComputePreconditioner()
+
+        linearProblem = Epetra.LinearProblem(A, x, b)
+
+        solver = AztecOO.AztecOO(linearProblem)
         solver.SetPrecOperator(prec)
+        solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
         solver.SetAztecOption(AztecOO.AZ_solver, AztecOO.AZ_cg)
         solver.SetAztecOption(AztecOO.AZ_output, 16)
         solver.Iterate(1550, 1e-5)
@@ -601,8 +613,8 @@ class StructuredUpscalingMethods:
         linearProblem = Epetra.LinearProblem(A, x, b)
         solver = AztecOO.AztecOO(linearProblem)
         solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
-        solver.Iterate(200, 1e-9)
-
+        solver.Iterate(300, 1e-9)
+        # """
         self.mb.tag_set_data(pres_tag, domain, np.asarray(x))
 
         # Get the flux - should break down in another part

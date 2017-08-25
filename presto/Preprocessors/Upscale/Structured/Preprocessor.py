@@ -36,7 +36,8 @@ class Preprocessor(object):
     def run(self, moab):
 
         self.SUM = StructuredUpscalingMethods(
-            self.coarse_ratio, self.mesh_size, self.block_size, moab)
+            self.coarse_ratio, self.mesh_size, self.block_size, self.method,
+            moab)
         self.SUM.calculate_primal_ids()
         self.SUM.create_tags()
 
@@ -65,6 +66,7 @@ class Preprocessor(object):
             t0 = time.time()
             self.SUM.export(self.output_file)
             print "took {0}".format(time.time()-t0), "seconds..."
+            exit()
 
         print "Upscaling the porosity..."
         t0 = time.time()
