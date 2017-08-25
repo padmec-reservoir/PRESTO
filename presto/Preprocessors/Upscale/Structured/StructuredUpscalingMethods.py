@@ -1,4 +1,3 @@
-
 import numpy as np
 import collections
 import time
@@ -136,8 +135,12 @@ class StructuredUpscalingMethods:
             "PRIMAL_ADJ", 1, types.MB_TYPE_HANDLE,
             types.MB_TAG_SPARSE, True)
 
-        self.collocation_point_tag = self.mb.tag_get_handle(
-            "COLLOCATION_POINT", 1, types.MB_TYPE_HANDLE,
+        self.coarse_injection_tag = self.mb.tag_get_handle(
+            "injection_well_coarse", 1, types.MB_TYPE_INTEGER,
+            types.MB_TAG_SPARSE, True)
+
+        self.coarse_production_tag = self.mb.tag_get_handle(
+            "production_well_coarse", 1, types.MB_TYPE_INTEGER,
             types.MB_TAG_SPARSE, True)
 
     def get_block_size_coarse(self):
@@ -609,14 +612,13 @@ class StructuredUpscalingMethods:
         solver.SetAztecOption(AztecOO.AZ_output, 16)
         solver.Iterate(1550, 1e-5)
         """
-
         linearProblem = Epetra.LinearProblem(A, x, b)
         solver = AztecOO.AztecOO(linearProblem)
         solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
         solver.Iterate(300, 1e-9)
         # """
         self.mb.tag_set_data(pres_tag, domain, np.asarray(x))
-
+        print "took {0} seconds to solve.".format(time.time() - t2)
         # Get the flux - should break down in another part
         flow_rate = 0.0
         total_area = 0.0
@@ -716,6 +718,57 @@ class StructuredUpscalingMethods:
                                          self.mb.tag_get_data(self.primal_perm[
                                              0], self.primals[(i, j, k)]))
                     cur_id += 1
+
+    def create_wells(self):
+        mesh_size_coarse = self._coarse_dims()
+        self.injection_wells_coarse = {}
+        self.production_wells_coarse = {}
+
+        self.injection_wells_coarse[1] = self.mb.create_meshset()
+
+        self.production_wells_coarse[1] = self.mb.create_meshset()
+        self.production_wells_coarse[2] = self.mb.create_meshset()
+        self.production_wells_coarse[3] = self.mb.create_meshset()
+        self.production_wells_coarse[4] = self.mb.create_meshset()
+
+        well = [self._get_elem_by_ijk((1, 1, z))
+                for z in range(0, mesh_size_coarse[2])]
+        for well_el in well:
+            self.mb.add_entities(self.production_wells_coarse[1], [well_el])
+        self.mb.tag_set_data(self.coarse_production_tag,
+                             self.production_wells_coarse[1], 1)
+
+        well = [self._get_elem_by_ijk((1, mesh_size_coarse[1], z))
+                for z in range(0, mesh_size_coarse[2])]
+        print well
+        for well_el in well:
+            self.mb.add_entities(self.production_wells_coarse[2], [well_el])
+        self.mb.tag_set_data(self.coarse_production_tag,
+                             self.production_wells_coarse[2], 1)
+
+        well = [self._get_elem_by_ijk((mesh_size_coarse[0],
+                mesh_size_coarse[1], z)) for z in range(0,
+                mesh_size_coarse[2])]
+        for well_el in well:
+            self.mb.add_entities(self.production_wells_coarse[3], [well_el])
+        self.mb.tag_set_data(self.coarse_production_tag,
+                             self.production_wells_coarse[3], 1)
+
+        well = [self._get_elem_by_ijk((mesh_size_coarse[0], 1, z))
+                for z in range(0, mesh_size_coarse[2])]
+        for well_el in well:
+            self.mb.add_entities(self.production_wells_coarse[4], [well_el])
+        self.mb.tag_set_data(self.coarse_production_tag,
+                             self.production_wells_coarse[4], 1)
+
+        well = [self._get_elem_by_ijk((mesh_size_coarse[0]//2+1,
+                mesh_size_coarse[1]//2+1, z)) for z in range(0,
+                mesh_size_coarse[2])]
+        for well_el in well:
+            self.mb.add_entities(self.injection_wells_coarse[1], [well_el])
+        self.mb.tag_set_data(self.coarse_injection_tag,
+                             self.injection_wells_coarse[1], 1)
+    # def solve_it():
 
     def export_data(self):
         writedir = ('I', 'J', 'K')

@@ -90,6 +90,7 @@ class Preprocessor(object):
         print "Generating coarse scale grid..."
         t0 = time.time()
         self.SUM.coarse_grid()
+        self.SUM.create_wells()
         print "took {0}".format(time.time()-t0), "seconds..."
 
         print "Exporting..."
