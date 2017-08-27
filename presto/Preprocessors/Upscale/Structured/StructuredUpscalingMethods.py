@@ -64,7 +64,7 @@ class StructuredUpscalingMethods:
             types.MB_TAG_DENSE, True)
 
         self.coarse_gid_tag = self.mb.tag_get_handle(
-            "PRIMAL_GLOBAL_ID", 1, types.MB_TYPE_INTEGER,
+            "GLOBAL_ID_COARSE", 1, types.MB_TYPE_INTEGER,
             types.MB_TAG_DENSE, True)
 
         # this will gide through the meshsets corresponding to coarse scale
@@ -717,10 +717,32 @@ class StructuredUpscalingMethods:
                     self.mb.tag_set_data(self.abs_perm_x_tag, el,
                                          self.mb.tag_get_data(self.primal_perm[
                                              0], self.primals[(i, j, k)]))
+                    self.coarse_elems.append(el)
                     cur_id += 1
+    def _get_block_by_ijk_coarse(self, i, j, k):
+            # TODO: - Should go on Common
+            #       - Should reformulate to get self.mesh_size instead of input
+        mesh_size_coarse = self._coarse_dims()
+        """
+            Track down the block from its (i,j,k) position.
+        """
+        block = (k) * mesh_size_coarse[0] * mesh_size_coarse[1]+(
+                (i)+(j) * mesh_size_coarse[0])
+        return block
+
+    def _get_elem_by_ijk_coarse(self, ijk):
+            # TODO Should go on Common
+
+        block_id = self._get_block_by_ijk_coarse(
+                ijk[0], ijk[1], ijk[2])
+        elem = self.coarse_elems[block_id]
+        return elem
 
     def create_wells(self):
         mesh_size_coarse = self._coarse_dims()
+        """(self.mesh_size[0],
+                            self.mesh_size[1],
+                            self.mesh_size[2]) """   # ,self._coarse_dims()
         self.injection_wells_coarse = {}
         self.production_wells_coarse = {}
 
@@ -731,38 +753,37 @@ class StructuredUpscalingMethods:
         self.production_wells_coarse[3] = self.mb.create_meshset()
         self.production_wells_coarse[4] = self.mb.create_meshset()
 
-        well = [self._get_elem_by_ijk((1, 1, z))
+        well = [self._get_elem_by_ijk((0, mesh_size_coarse[1] - 1, z))
                 for z in range(0, mesh_size_coarse[2])]
         for well_el in well:
             self.mb.add_entities(self.production_wells_coarse[1], [well_el])
         self.mb.tag_set_data(self.coarse_production_tag,
                              self.production_wells_coarse[1], 1)
 
-        well = [self._get_elem_by_ijk((1, mesh_size_coarse[1], z))
+        well = [self._get_elem_by_ijk((0, 1, z))
                 for z in range(0, mesh_size_coarse[2])]
-        print well
         for well_el in well:
             self.mb.add_entities(self.production_wells_coarse[2], [well_el])
         self.mb.tag_set_data(self.coarse_production_tag,
                              self.production_wells_coarse[2], 1)
 
-        well = [self._get_elem_by_ijk((mesh_size_coarse[0],
-                mesh_size_coarse[1], z)) for z in range(0,
+        well = [self._get_elem_by_ijk((mesh_size_coarse[0] - 1,
+                mesh_size_coarse[1] - 1, z)) for z in range(0,
                 mesh_size_coarse[2])]
         for well_el in well:
             self.mb.add_entities(self.production_wells_coarse[3], [well_el])
         self.mb.tag_set_data(self.coarse_production_tag,
                              self.production_wells_coarse[3], 1)
 
-        well = [self._get_elem_by_ijk((mesh_size_coarse[0], 1, z))
+        well = [self._get_elem_by_ijk((mesh_size_coarse[0] - 1,
+                mesh_size_coarse[1] - 1, z))
                 for z in range(0, mesh_size_coarse[2])]
         for well_el in well:
             self.mb.add_entities(self.production_wells_coarse[4], [well_el])
         self.mb.tag_set_data(self.coarse_production_tag,
                              self.production_wells_coarse[4], 1)
 
-        well = [self._get_elem_by_ijk((mesh_size_coarse[0]//2+1,
-                mesh_size_coarse[1]//2+1, z)) for z in range(0,
+        well = [self._get_elem_by_ijk((0, 0, z)) for z in range(0,
                 mesh_size_coarse[2])]
         for well_el in well:
             self.mb.add_entities(self.injection_wells_coarse[1], [well_el])
