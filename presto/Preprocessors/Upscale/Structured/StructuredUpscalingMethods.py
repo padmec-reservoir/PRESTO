@@ -719,6 +719,7 @@ class StructuredUpscalingMethods:
                                              0], self.primals[(i, j, k)]))
                     self.coarse_elems.append(el)
                     cur_id += 1
+
     def _get_block_by_ijk_coarse(self, i, j, k):
             # TODO: - Should go on Common
             #       - Should reformulate to get self.mesh_size instead of input
@@ -753,21 +754,21 @@ class StructuredUpscalingMethods:
         self.production_wells_coarse[3] = self.mb.create_meshset()
         self.production_wells_coarse[4] = self.mb.create_meshset()
 
-        well = [self._get_elem_by_ijk((0, mesh_size_coarse[1] - 1, z))
+        well = [self._get_elem_by_ijk_coarse((0, mesh_size_coarse[1] - 1, z))
                 for z in range(0, mesh_size_coarse[2])]
         for well_el in well:
             self.mb.add_entities(self.production_wells_coarse[1], [well_el])
         self.mb.tag_set_data(self.coarse_production_tag,
                              self.production_wells_coarse[1], 1)
 
-        well = [self._get_elem_by_ijk((0, 1, z))
+        well = [self._get_elem_by_ijk_coarse((0, 1, z))
                 for z in range(0, mesh_size_coarse[2])]
         for well_el in well:
             self.mb.add_entities(self.production_wells_coarse[2], [well_el])
         self.mb.tag_set_data(self.coarse_production_tag,
                              self.production_wells_coarse[2], 1)
 
-        well = [self._get_elem_by_ijk((mesh_size_coarse[0] - 1,
+        well = [self._get_elem_by_ijk_coarse((mesh_size_coarse[0] - 1,
                 mesh_size_coarse[1] - 1, z)) for z in range(0,
                 mesh_size_coarse[2])]
         for well_el in well:
@@ -775,7 +776,7 @@ class StructuredUpscalingMethods:
         self.mb.tag_set_data(self.coarse_production_tag,
                              self.production_wells_coarse[3], 1)
 
-        well = [self._get_elem_by_ijk((mesh_size_coarse[0] - 1,
+        well = [self._get_elem_by_ijk_coarse((mesh_size_coarse[0] - 1,
                 mesh_size_coarse[1] - 1, z))
                 for z in range(0, mesh_size_coarse[2])]
         for well_el in well:
@@ -783,7 +784,7 @@ class StructuredUpscalingMethods:
         self.mb.tag_set_data(self.coarse_production_tag,
                              self.production_wells_coarse[4], 1)
 
-        well = [self._get_elem_by_ijk((0, 0, z)) for z in range(0,
+        well = [self._get_elem_by_ijk_coarse((0, 0, z)) for z in range(0,
                 mesh_size_coarse[2])]
         for well_el in well:
             self.mb.add_entities(self.injection_wells_coarse[1], [well_el])

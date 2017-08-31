@@ -64,7 +64,7 @@ class Preprocessor(object):
         if self.fine_grid_construct == 'fine_grid':
             print "exporting fine scale mesh"
             t0 = time.time()
-            self.SUM.create_wells()
+            # self.SUM.create_wells()
             self.SUM.export(self.output_file)
             print "took {0}".format(time.time()-t0), "seconds..."
             exit()
@@ -91,7 +91,7 @@ class Preprocessor(object):
         print "Generating coarse scale grid..."
         t0 = time.time()
         self.SUM.coarse_grid()
-        self.SUM.create_wells()
+        # self.SUM.create_wells()
         print "took {0}".format(time.time()-t0), "seconds..."
 
         print "Exporting..."
