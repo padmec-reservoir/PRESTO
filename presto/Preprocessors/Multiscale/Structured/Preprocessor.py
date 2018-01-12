@@ -1,12 +1,10 @@
 import time
 
-from elliptic.Preprocess.PreprocessorMixins import ConfigFilePreprocessorMixin
-
-from StructuredMultiscaleMesh import StructuredMultiscaleMesh
+from .StructuredMultiscaleMesh import StructuredMultiscaleMesh
 
 
-class Preprocessor(ConfigFilePreprocessorMixin):
-    INFO = """
+class Preprocessor(object):
+    """
     Creates a 3-D structured grid and aggregates elements in primal and dual
     coarse entities.
     """
@@ -22,30 +20,27 @@ class Preprocessor(ConfigFilePreprocessorMixin):
         self.smm = StructuredMultiscaleMesh(
             self.coarse_ratio, self.mesh_size, self.block_size)
 
-    def run(self):
+    def run(self, moab):
+        self.smm.set_moab(moab)
+
         self.smm.calculate_primal_ids()
         self.smm.create_tags()
 
-        print "Creating fine vertices..."
+        print("Creating fine vertices...")
         t0 = time.time()
         self.smm.create_fine_vertices()
-        print "took {0}\n".format(time.time()-t0)
+        print("took {0}\n".format(time.time()-t0))
 
-        print "Creating fine blocks and primal..."
+        print("Creating fine blocks and primal...")
         t0 = time.time()
         self.smm.create_fine_blocks_and_primal()
-        print "took {0}\n".format(time.time()-t0)
+        print("took {0}\n".format(time.time()-t0))
 
-        print "Generating dual..."
+        print("Generating dual...")
         t0 = time.time()
         self.smm.generate_dual()
         self.smm.store_primal_adj()
-        print "took {0}\n".format(time.time()-t0)
-
-        print "Exporting..."
-        t0 = time.time()
-        self.smm.export(self.output_file)
-        print "took {0}\n".format(time.time()-t0)
+        print("took {0}\n".format(time.time()-t0))
 
     @property
     def structured_configs(self):
@@ -54,7 +49,7 @@ class Preprocessor(ConfigFilePreprocessorMixin):
     @structured_configs.setter
     def structured_configs(self, configs):
         if not configs:
-            raise ValueError("Must have a StructuredMS section "
+            raise ValueError("Must have a [StructuredMS] section "
                              "in the config file.")
 
         self._structured_configs = configs
@@ -66,8 +61,9 @@ class Preprocessor(ConfigFilePreprocessorMixin):
     @coarse_ratio.setter
     def coarse_ratio(self, values):
         if not values:
-            raise ValueError("Must have a coarse-ratio section "
-                             "in the config file.")
+            raise ValueError("Must have a coarse-ratio option "
+                             "under the [StructuredMS] section in the config "
+                             "file.")
 
         self._coarse_ratio = [int(v) for v in values]
 
@@ -78,8 +74,9 @@ class Preprocessor(ConfigFilePreprocessorMixin):
     @mesh_size.setter
     def mesh_size(self, values):
         if not values:
-            raise ValueError("Must have a mesh-size section "
-                             "in the config file.")
+            raise ValueError("Must have a mesh-size option "
+                             "under the [StructuredMS] section in the config "
+                             "file.")
 
         self._mesh_size = [int(v) for v in values]
 
@@ -90,7 +87,8 @@ class Preprocessor(ConfigFilePreprocessorMixin):
     @block_size.setter
     def block_size(self, values):
         if not values:
-            raise ValueError("Must have a block-size section "
-                             "in the config file.")
+            raise ValueError("Must have a block-size option "
+                             "under the [StructuredMS] section in the config "
+                             "file.")
 
         self._block_size = [int(v) for v in values]

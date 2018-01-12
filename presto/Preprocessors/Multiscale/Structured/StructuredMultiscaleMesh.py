@@ -34,14 +34,17 @@ class StructuredMultiscaleMesh:
         self.primal_adj = {}
 
         # MOAB boilerplate
-        self.mb = core.Core()
-        self.root_set = self.mb.get_root_set()
-        self.mesh_topo_util = topo_util.MeshTopoUtil(self.mb)
+        # self.mb = core.Core()
+        # self.root_set = self.mb.get_root_set()
+        # self.mesh_topo_util = topo_util.MeshTopoUtil(self.mb)
+
+    def set_moab(self, moab):
+        self.mb = moab
 
     def calculate_primal_ids(self):
         for dim in range(0, 3):
             self.primal_ids.append(
-                [i // (self.coarse_ratio[dim]) for i in xrange(
+                [i // (self.coarse_ratio[dim]) for i in range(
                     self.mesh_size[dim])])
 
         new_primal = []
@@ -119,15 +122,15 @@ class StructuredMultiscaleMesh:
         cur_id = 0
 
         # Create fine grid
-        for k, idz in zip(xrange(self.mesh_size[2]),
+        for k, idz in zip(range(self.mesh_size[2]),
                           self.primal_ids[2]):
 
-            print "{0} / {1}".format(k, self.mesh_size[2])
+            print("{0} / {1}".format(k, self.mesh_size[2]))
 
-            for j, idy in zip(xrange(self.mesh_size[1]),
+            for j, idy in zip(range(self.mesh_size[1]),
                               self.primal_ids[1]):
 
-                for i, idx in zip(xrange(self.mesh_size[0]),
+                for i, idx in zip(range(self.mesh_size[0]),
                                   self.primal_ids[0]):
 
                     hexa = self._create_hexa(i, j, k)
@@ -161,7 +164,7 @@ class StructuredMultiscaleMesh:
                                    max(self.primal_ids[1]),
                                    max(self.primal_ids[2])])
 
-        for primal_id, primal in self.primals.iteritems():
+        for primal_id, primal in self.primals.items():
             adj = self.mb.create_meshset()
             adj_ids = []
 
@@ -416,8 +419,8 @@ class StructuredMultiscaleMesh:
                                    max(self.primal_ids[2])])
 
         i = 0
-        for primal_id, primal in self.primals.iteritems():
-            print "{0} / {1}".format(i, len(self.primals.keys()))
+        for primal_id, primal in self.primals.items():
+            print("{0} / {1}".format(i, len(self.primals.keys())))
             i += 1
             # Generate dual corners (or primal centroids)
             if all(np.array(primal_id) != min_coarse_ids) and \
@@ -460,8 +463,8 @@ class StructuredMultiscaleMesh:
              [0, 0, -1], [0, -1, -1], [1, -1, -1], [1, 0, -1]],
         ])
         i = 0
-        for primal_id, primal in self.primals.iteritems():
-            print "{0} / {1}".format(i, len(self.primals.keys()))
+        for primal_id, primal in self.primals.items():
+            print("{0} / {1}".format(i, len(self.primals.keys())))
             i += 1
             collocation_point = self._get_elem_by_ijk(
                 self.primal_centroid_ijk[primal_id])
@@ -486,6 +489,3 @@ class StructuredMultiscaleMesh:
                 self.collocation_point_tag,
                 collocation_point_root_ms,
                 collocation_point)
-
-    def export(self, outfile):
-        self.mb.write_file(outfile)

@@ -257,7 +257,7 @@ class StructuredUpscalingMethods:
         for k, idz in zip(xrange(self.mesh_size[2]),
                           self.primal_ids[2]):
             # Flake8 bug
-            print "{0} / {1}".format(k + 1, self.mesh_size[2])
+            print("{0} / {1}".format(k + 1, self.mesh_size[2]))
             for j, idy in zip(xrange(self.mesh_size[1]),
                               self.primal_ids[1]):
                 for i, idx in zip(xrange(self.mesh_size[0]),
@@ -416,7 +416,7 @@ class StructuredUpscalingMethods:
                     primal_perm[dim] = len(np.asarray(
                         perm)) / sum(1/np.asarray(perm))
                 else:
-                    print "Choose either Arithmetic, Geometric or Harmonic."
+                    print("Choose either Arithmetic, Geometric or Harmonic.")
                     exit()
 
                 perm = primal_perm[dim]
@@ -595,30 +595,14 @@ class StructuredUpscalingMethods:
             A.InsertGlobalValues(idx, values, ids)
         A.FillComplete()
         t2 = time.time()
-        print """Filling matrix. Axis = {0} (0 = X, 1 = Y, 0 = Z); Setting
-        Boundary conditions took {1} seconds, Setting inner elems
-        took {2} seconds...""".format(dim, t1 - t0, t2 - t1)
-        """
-        prec = ML.MultiLevelPreconditioner(A, False)
-        prec.SetParameterList(self.mlList)
-        prec.ComputePreconditioner()
 
-        linearProblem = Epetra.LinearProblem(A, x, b)
-
-        solver = AztecOO.AztecOO(linearProblem)
-        solver.SetPrecOperator(prec)
-        solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
-        solver.SetAztecOption(AztecOO.AZ_solver, AztecOO.AZ_cg)
-        solver.SetAztecOption(AztecOO.AZ_output, 16)
-        solver.Iterate(1550, 1e-5)
-        """
         linearProblem = Epetra.LinearProblem(A, x, b)
         solver = AztecOO.AztecOO(linearProblem)
         solver.SetAztecOption(AztecOO.AZ_output, AztecOO.AZ_warnings)
         solver.Iterate(300, 1e-9)
         # """
         self.mb.tag_set_data(pres_tag, domain, np.asarray(x))
-        print "took {0} seconds to solve.".format(time.time() - t2)
+        print("took {0} seconds to solve.".format(time.time() - t2))
         # Get the flux - should break down in another part
         flow_rate = 0.0
         total_area = 0.0
@@ -662,7 +646,7 @@ class StructuredUpscalingMethods:
         self.get_boundary_meshsets()
 
         for primal_id, primal in self.primals.iteritems():
-            print "iterating over meshset {0}".format(primal_id)
+            print("iterating over meshset {0}".format(primal_id))
             fine_elems_in_primal = self.mb.get_entities_by_type(
                     primal, types.MBHEX)
             # The A matrix should be called here
@@ -690,7 +674,7 @@ class StructuredUpscalingMethods:
         coarse_dims = self._coarse_dims()
         cur_id = 0
         for k in xrange(coarse_dims[2]):
-            print "{0} / {1}".format(k + 1, coarse_dims[2])
+            print("{0} / {1}".format(k + 1, coarse_dims[2]))
             for j in xrange(coarse_dims[1]):
                 for i in xrange(coarse_dims[0]):
 

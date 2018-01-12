@@ -27,10 +27,10 @@ class Preprocessor(object):
         if self.method == "Average":
             self.average = self.structured_configs['average']
             if self.average not in ('Arithmetic', 'Geometric', 'Harmonic'):
-                print "Choose either Arithmetic, Geometric or Harmonic."
+                print("Choose either Arithmetic, Geometric or Harmonic.")
                 exit()
         elif self.method != 'Flow-based':
-            print "Choose either Flow-based or Average."
+            print("Choose either Flow-based or Average.")
             exit()
 
     def run(self, moab):
@@ -41,61 +41,61 @@ class Preprocessor(object):
         self.SUM.calculate_primal_ids()
         self.SUM.create_tags()
 
-        print "Creating fine vertices..."
+        print("Creating fine vertices...")
         t0 = time.time()
         self.SUM.create_fine_vertices()
-        print "took {0}".format(time.time() - t0), "seconds..."
+        print("took {0}".format(time.time() - t0), "seconds...")
 
-        print "Reading porosity map..."
+        print("Reading porosity map...")
         t0 = time.time()
         self.SUM.read_phi()
-        print "took {0}".format(time.time() - t0), "seconds..."
+        print("took {0}".format(time.time() - t0), "seconds...")
 
-        print "Reading permeability map..."
+        print("Reading permeability map...")
         t0 = time.time()
         self.SUM.read_perm()
-        print "took {0}".format(time.time() - t0), "seconds..."
+        print("took {0}".format(time.time() - t0), "seconds...")
 
-        print "Associating fine volumes to primal coarse grid..."
+        print("Associating fine volumes to primal coarse grid...")
         t0 = time.time()
         self.SUM.create_fine_blocks_and_primal()
-        print "took {0}".format(time.time()-t0), "seconds..."
+        print("took {0}".format(time.time()-t0), "seconds...")
 
         if self.fine_grid_construct == 'fine_grid':
-            print "exporting fine scale mesh"
+            print("exporting fine scale mesh")
             t0 = time.time()
             # self.SUM.create_wells()
             self.SUM.export(self.output_file)
-            print "took {0}".format(time.time()-t0), "seconds..."
+            print("took {0}".format(time.time()-t0), "seconds...")
             exit()
 
-        print "Upscaling the porosity..."
+        print("Upscaling the porosity...")
         t0 = time.time()
         self.SUM.upscale_phi()
-        print "took {0}".format(time.time()-t0), "seconds..."
+        print("took {0}".format(time.time()-t0), "seconds...")
 
-        print "{0}".format(self.method), "upscaling for the permeability"
+        print("{0}".format(self.method), "upscaling for the permeability")
 
         if self.method == "Average":
-            print "{0}".format(self.average), "mean..."
+            print("{0}".format(self.average), "mean...")
             t0 = time.time()
             self.SUM.upscale_perm_mean(self.average)
-            print "took {0}".format(time.time()-t0), "seconds..."
+            print("took {0}".format(time.time()-t0), "seconds...")
 
         if self.method == "Flow-based":
-            print "Setting Local Upscaling..."
+            print("Setting Local Upscaling...")
             t0 = time.time()
             self.SUM.flow_based_coarse_perm()
-            print "took {0}".format(time.time()-t0), "seconds..."
+            print("took {0}".format(time.time()-t0), "seconds...")
 
-        print "Generating coarse scale grid..."
+        print("Generating coarse scale grid...")
         t0 = time.time()
         self.SUM.coarse_grid()
         # self.SUM.create_wells()
-        print "took {0}".format(time.time()-t0), "seconds..."
+        print("took {0}".format(time.time()-t0), "seconds...")
 
-        print "Exporting..."
+        print("Exporting...")
         t0 = time.time()
         self.SUM.export(self.output_file)
         self.SUM.export_data()
-        print "took {0}\n".format(time.time()-t0)
+        print("took {0}\n".format(time.time()-t0))
