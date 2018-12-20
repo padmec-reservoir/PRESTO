@@ -14,7 +14,6 @@ dy = 5/3    # Element size along the y axis.
 dz = 1      # Element size along the z axis.
 num_elements = 30
 
-
 # create_mesh_connectivity: Defines the vertices that make an element.
 # Parameters:
 #   - vertex_handles: NumPy array of entiites handles for the vertices
@@ -89,27 +88,35 @@ def main():
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
     # Setting up tags for permeability and centroid coordinates for each element.
-    print("Creating and setting tags")
-    ts = time.time()
-    centroid_tag = mbcore.tag_get_handle('Centroid', 3, types.MB_TYPE_DOUBLE, \
+    centroid_tag = mbcore.tag_get_handle('CENTROID', 3, types.MB_TYPE_DOUBLE, \
                                           types.MB_TAG_DENSE, True)
-    permeability_tag = mbcore.tag_get_handle('Permeability', 3, types.MB_TYPE_DOUBLE, \
+    permeability_tag = mbcore.tag_get_handle('PERMEABILITY', 9, types.MB_TYPE_DOUBLE, \
                                               types.MB_TAG_DENSE, True)
-    dirichlet_tag = mbcore.tag_get_handle('DirichletBC', 1, types.MB_TYPE_DOUBLE, \
+    dirichlet_tag = mbcore.tag_get_handle('DIRICHLET_BC', 1, types.MB_TYPE_DOUBLE, \
                                             types.MB_TAG_DENSE, True)
-    neumann_tag = mbcore.tag_get_handle('NeumannBC', 1, types.MB_TYPE_DOUBLE, \
+    neumann_tag = mbcore.tag_get_handle('NEUMANN_BC', 1, types.MB_TYPE_DOUBLE, \
                                         types.MB_TAG_DENSE, True)
 
+    print("Getting data to set tags")
+    ts = time.time()
     centroid_coord = np.array([[vertex_coords[3*int(v[0]-1)] + (dx/2), \
                                 vertex_coords[3*int(v[0]-1)+1] + (dy/2), \
                                 vertex_coords[3*int(v[0]-1)+2] + (dz/2)] \
                                 for v in mesh_connectivity])
-    permeability = np.array([[1.0,1.0,1.0] for i in range(num_elements)])
-
-    mbcore.tag_set_data(centroid_tag, elem_handles, centroid_coord)
-    mbcore.tag_set_data(permeability_tag, elem_handles, permeability)
+    perm_data = np.fromfile('spe_perm.dat', np.float, -1, '         ')
+    permeability = np.array([[perm_data[i], 0.0, 0.0, \
+                              0.0, perm_data[i + num_elements], 0.0, \
+                              0.0, 0.0, perm_data[i + 2*num_elements]] \
+                              for i in range(num_elements)])
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
+    print("Setting data to tags")
+    ts = time.time()
+    mbcore.tag_set_data(centroid_tag, elem_handles, centroid_coord)
+    # import pdb; pdb.set_trace()
+    mbcore.tag_set_data(permeability_tag, elem_handles, permeability)
+    print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
+    
     print("Writing .h5m file")
     mbcore.write_file("tpfa_mesh.h5m")
     ts = time.time()
