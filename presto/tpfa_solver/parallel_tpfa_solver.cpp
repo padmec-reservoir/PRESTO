@@ -1,13 +1,12 @@
 /*
     TODO:
+        - Adicionar cálculo da permeabilidade equivalente corrigido (usando o tensor).
         - Resolver o sistema encontrado no final.
-        - Verificar se a fórmula usada no cálculo das diferenças finitas está correta.
         - Buscar exemplos e testar desempenho.
             - Procurar ferramentas para medição de desempenho de programas paralelos.
         - Gerar malha com o resultado final.
         - Refatorar código.
             - Modularizar os trechos de código (organizar em funções e classes).
-        - Adicionar tags com condições de contorno à malha.
 */
 
 
@@ -111,22 +110,27 @@ int main(int argc, char **argv) {
     MPI_Allreduce(&num_local_elems, &num_global_elems, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
     // Gets the global ID for each element in the partition.
-    vector<Tag> tag_handles;
     int* gids = (int*) calloc(my_elems.size(), sizeof(int));
     if (gids == NULL) {
         cout << "Null pointer" << endl;
         return -1;
     }
-    rval = mb->tag_get_tags(tag_handles); MB_CHK_ERR(rval);
-    rval = mb->tag_get_data(tag_handles[4], my_elems, (void*) gids); MB_CHK_ERR(rval);
+    Tag global_id_tag, centroid_tag, perm_tag, dirichlet_tag;
+    rval = mb->tag_get_handle("GLOBAL_ID", global_id_tag); MB_CHK_ERR(rval);
+    rval = mb->tag_get_handle("CENTROID", centroid_tag); MB_CHK_ERR(rval);
+    rval = mb->tag_get_handle("PERMEABILITY", perm_tag); MB_CHK_ERR(rval);
+    rval = mb->tag_get_handle("DIRICHLET_BC", dirichlet_tag); MB_CHK_ERR(rval);
+    rval = mb->tag_get_data(global_id_tag, my_elems, (void*) gids); MB_CHK_ERR(rval);
 
     // It is necessary to exchange tags for the ghost elements. Those are not
     // transferred when exchange_ghost_cells is called.
     Range empty_set;
-    rval = pcomm->exchange_tags(tag_handles[8], empty_set);
+    rval = pcomm->exchange_tags(centroid_tag, empty_set);
     MB_CHK_SET_ERR(rval, "exchange_tags for centroid failed");
-    rval = pcomm->exchange_tags(tag_handles[9], empty_set);
+    rval = pcomm->exchange_tags(perm_tag, empty_set);
     MB_CHK_SET_ERR(rval, "exchange_tags for permeability failed");
+    rval = pcomm->exchange_tags(dirichlet_tag, empty_set);
+    MB_CHK_SET_ERR(rval, "exchange_tags for dirichlet bc failed");
 
     // Initializing the Epetra structure for a sparse matrix.
     Epetra_Map row_map (num_global_elems, num_local_elems, gids, 0, epetra_comm);
@@ -136,26 +140,32 @@ int main(int argc, char **argv) {
     Range adjacencies;
     std::vector<double> row_values;
     std::vector<int> row_indexes;
-    double e1_centroid[3], e2_centroid[3], e1_perm, e2_perm, diag_coef = 0;
+    double e1_centroid[3], e2_centroid[3], e1_perm[9], e2_perm[9], pressure = 0, diag_coef = 0;
     double equiv_perm = 0.0, centroid_dist = 0.0;
     int row_id = -1;
     for (Range::iterator it = my_elems.begin(); it != my_elems.end(); it++) {
         rval = topo_util->get_bridge_adjacencies(*it, 2, 3, adjacencies); MB_CHK_ERR(rval);
-        rval = mb->tag_get_data(tag_handles[8], &(*it), 1, &e1_centroid); MB_CHK_ERR(rval);
-        rval = mb->tag_get_data(tag_handles[9], &(*it), 1, &e1_perm); MB_CHK_ERR(rval);
-        for (Range::iterator itt = adjacencies.begin(); itt != adjacencies.end(); itt++) {
-            rval = mb->tag_get_data(tag_handles[8], &(*itt), 1, &e2_centroid); MB_CHK_ERR(rval);
-            rval = mb->tag_get_data(tag_handles[9], &(*itt), 1, &e2_perm); MB_CHK_ERR(rval);
-            rval = mb->tag_get_data(tag_handles[4], &(*itt), 1, &row_id); MB_CHK_ERR(rval);
+        rval = mb->tag_get_data(centroid_tag, &(*it), 1, &e1_centroid); MB_CHK_ERR(rval);
+        rval = mb->tag_get_data(perm_tag, &(*it), 1, &e1_perm); MB_CHK_ERR(rval);
+        rval = mb->tag_get_data(dirichlet_tag, &(*it), 1, &pressure); MB_CHK_ERR(rval);
+        if (pressure != 0) {
+            for (Range::iterator itt = adjacencies.begin(); itt != adjacencies.end(); itt++) {
+                rval = mb->tag_get_data(centroid_tag, &(*itt), 1, &e2_centroid); MB_CHK_ERR(rval);
+                rval = mb->tag_get_data(perm_tag, &(*itt), 1, &e2_perm); MB_CHK_ERR(rval);
+                rval = mb->tag_get_data(global_id_tag, &(*itt), 1, &row_id); MB_CHK_ERR(rval);
 
-            equiv_perm = get_equivalent_perm(e1_perm, e2_perm);
-            centroid_dist = get_centroid_dist(e1_centroid, e2_centroid);
+                equiv_perm = get_equivalent_perm(e1_perm, e2_perm);
+                centroid_dist = get_centroid_dist(e1_centroid, e2_centroid);
 
-            row_values.push_back(-equiv_perm/centroid_dist);
-            row_indexes.push_back(row_id);
+                row_values.push_back(-equiv_perm/centroid_dist);
+                row_indexes.push_back(row_id);
+            }
+            diag_coef = (-1)*accumulate(row_values.begin(), row_values.end(), 0.0);
         }
-        diag_coef = (-1)*accumulate(row_values.begin(), row_values.end(), 0.0);
-        rval = mb->tag_get_data(tag_handles[4], &(*it), 1, &row_id); MB_CHK_ERR(rval);
+        else {
+            diag_coef = 1;
+        }
+        rval = mb->tag_get_data(global_id_tag, &(*it), 1, &row_id); MB_CHK_ERR(rval);
 
         row_values.push_back(diag_coef);
         row_indexes.push_back(row_id);

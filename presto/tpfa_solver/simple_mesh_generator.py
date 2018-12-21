@@ -39,6 +39,18 @@ def create_mesh_connectivity(vertex_handles, vertex_coords):
 
     return mesh_connectivity
 
+def pressure_val(coord):
+    if (coord[0] > 0 and coord[0] < dx) and (coord[1] > 0 and coord[1] < dy) \
+        or (coord[0] > (nx-1)*dx and coord[0] < nx*dx) and (coord[1] > 0 and coord[1] < dy) \
+        or (coord[0] > (nx-1)*dx and coord[0] < nx*dx) and (coord[1] > (ny-1)*dy and coord[1] < ny*dy) \
+        or (coord[0] > 0 and coord[0] < dx) and (coord[1] > (ny-1)*dy and coord[1] < ny*dy):
+        return 4000.0
+    elif (coord[0] > 580 and coord[0] < 600) and \
+        (coord[1] > 1090 and coord[1] < 1100):
+        return 10000.0
+    else:
+        return 0
+
 def main():
     global nx, ny, nz, dx, dy, dz, num_elements
 
@@ -108,15 +120,17 @@ def main():
                               0.0, perm_data[i + num_elements], 0.0, \
                               0.0, 0.0, perm_data[i + 2*num_elements]] \
                               for i in range(num_elements)])
+    dirichlet = np.array([pressure_val(c) for c in centroid_coord])
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
     print("Setting data to tags")
     ts = time.time()
     mbcore.tag_set_data(centroid_tag, elem_handles, centroid_coord)
-    # import pdb; pdb.set_trace()
     mbcore.tag_set_data(permeability_tag, elem_handles, permeability)
-    print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
+    mbcore.tag_set_data(dirichlet_tag, elem_handles, dirichlet)
     
+    print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
+
     print("Writing .h5m file")
     mbcore.write_file("tpfa_mesh.h5m")
     ts = time.time()
