@@ -1,6 +1,5 @@
 /*
     TODO:
-        - Adicionar cálculo da permeabilidade equivalente corrigido (usando o tensor).
         - Resolver o sistema encontrado no final.
         - Buscar exemplos e testar desempenho.
             - Procurar ferramentas para medição de desempenho de programas paralelos.
@@ -21,6 +20,7 @@
 #include <Epetra_Map.h>
 #include <Epetra_Vector.h>
 #include <Epetra_Version.h>
+#include <AztecOO.h>
 #include <mpi.h>
 #include <iostream>
 #include <string>
@@ -38,12 +38,22 @@
 using namespace std;
 using namespace moab;
 
-double get_equivalent_perm (const double& k1, const double& k2) {
-    return (2*k1*k2)/(k1+k2);
+double get_equivalent_perm (double k1[9], double k2[9], double unit_vector[3]) {
+    double k1_pre[3] = {k1[0]*unit_vector[0], k1[4]*unit_vector[1], k1[8]*unit_vector[2]};
+    double k2_pre[3] = {k2[0]*unit_vector[0], k2[4]*unit_vector[1], k2[8]*unit_vector[2]};
+    double k1_eq = k1_pre[0]*unit_vector[0] + k1_pre[1]*unit_vector[1] + k1_pre[2]*unit_vector[2];
+    double k2_eq = k2_pre[0]*unit_vector[0] + k2_pre[1]*unit_vector[1] + k2_pre[2]*unit_vector[2];
+    return 2*k1_eq*k2_eq/(k1_eq + k2_eq);
 }
 
 double get_centroid_dist (double c1[], double c2[]) {
-    return pow(c1[0] + c2[0], 2) + pow(c1[1] + c2[1], 2) + pow(c1[2] + c2[2], 2);
+    return sqrt(pow(c1[0] + c2[0], 2) + pow(c1[1] + c2[1], 2) + pow(c1[2] + c2[2], 2));
+}
+
+void get_unit_vector (double c1[], double c2[], double dist, double *u) {
+    u[0] = (c2[0] - c1[0])/dist;
+    u[1] = (c2[1] - c1[1])/dist;
+    u[2] = (c2[2] - c1[2])/dist;
 }
 
 int main(int argc, char **argv) {
@@ -134,7 +144,9 @@ int main(int argc, char **argv) {
 
     // Initializing the Epetra structure for a sparse matrix.
     Epetra_Map row_map (num_global_elems, num_local_elems, gids, 0, epetra_comm);
-    Epetra_CrsMatrix k_matrix (Copy, row_map, 6);   // Sparse matrix w/ at most 6 entries per line.
+    Epetra_CrsMatrix A (Copy, row_map, 6);   // Sparse matrix w/ at most 6 entries per line.
+    Epetra_Vector B (row_map);
+    Epetra_Vector X (row_map);
 
     // The code block above does the actual calculation for the method.
     Range adjacencies;
@@ -142,22 +154,26 @@ int main(int argc, char **argv) {
     std::vector<int> row_indexes;
     double e1_centroid[3], e2_centroid[3], e1_perm[9], e2_perm[9], pressure = 0, diag_coef = 0;
     double equiv_perm = 0.0, centroid_dist = 0.0;
-    int row_id = -1;
+    double unit_vector[3] = {0, 0, 0};
+    int row_id = -1, n = 0;
+    printf("<%d> Computing the method\n", rank);
     for (Range::iterator it = my_elems.begin(); it != my_elems.end(); it++) {
-        rval = topo_util->get_bridge_adjacencies(*it, 2, 3, adjacencies); MB_CHK_ERR(rval);
-        rval = mb->tag_get_data(centroid_tag, &(*it), 1, &e1_centroid); MB_CHK_ERR(rval);
-        rval = mb->tag_get_data(perm_tag, &(*it), 1, &e1_perm); MB_CHK_ERR(rval);
         rval = mb->tag_get_data(dirichlet_tag, &(*it), 1, &pressure); MB_CHK_ERR(rval);
-        if (pressure != 0) {
+        if (pressure == 0) {
+            rval = topo_util->get_bridge_adjacencies(*it, 2, 3, adjacencies); MB_CHK_ERR(rval);
+            rval = mb->tag_get_data(centroid_tag, &(*it), 1, &e1_centroid); MB_CHK_ERR(rval);
+            rval = mb->tag_get_data(perm_tag, &(*it), 1, &e1_perm); MB_CHK_ERR(rval);
             for (Range::iterator itt = adjacencies.begin(); itt != adjacencies.end(); itt++) {
                 rval = mb->tag_get_data(centroid_tag, &(*itt), 1, &e2_centroid); MB_CHK_ERR(rval);
                 rval = mb->tag_get_data(perm_tag, &(*itt), 1, &e2_perm); MB_CHK_ERR(rval);
                 rval = mb->tag_get_data(global_id_tag, &(*itt), 1, &row_id); MB_CHK_ERR(rval);
 
-                equiv_perm = get_equivalent_perm(e1_perm, e2_perm);
                 centroid_dist = get_centroid_dist(e1_centroid, e2_centroid);
 
-                row_values.push_back(-equiv_perm/centroid_dist);
+                get_unit_vector(e1_centroid, e2_centroid, centroid_dist, &unit_vector[0]);
+                equiv_perm = get_equivalent_perm(e1_perm, e2_perm, unit_vector);
+
+                row_values.push_back(-equiv_perm/pow(centroid_dist, 2));
                 row_indexes.push_back(row_id);
             }
             diag_coef = (-1)*accumulate(row_values.begin(), row_values.end(), 0.0);
@@ -170,16 +186,28 @@ int main(int argc, char **argv) {
         row_values.push_back(diag_coef);
         row_indexes.push_back(row_id);
 
-        k_matrix.InsertGlobalValues(row_id, row_values.size(), &row_values[0], &row_indexes[0]);
+        A.InsertGlobalValues(row_id, row_values.size(), &row_values[0], &row_indexes[0]);
+        B[n++] = pressure;
 
         row_values.clear();
         row_indexes.clear();
         adjacencies.clear();
     }
     printf("<%d> Done.\n", rank);
-    k_matrix.FillComplete();
-    k_matrix.Print(cout);
+    A.FillComplete();
     MPI_Barrier(MPI_COMM_WORLD);
+
+    Epetra_LinearProblem linear_problem (&A, &X, &B);
+    AztecOO solver (linear_problem);
+    solver.Iterate(100000, 1e-10);
+    printf("<%d> Solved it.\n", rank);
+
+    printf("<%d> Setting pressure tag\n", rank);
+    Tag pressure_tag;
+    rval = mb->tag_get_handle("PRESSURE", 1, MB_TYPE_DOUBLE, pressure_tag, MB_TAG_DENSE);
+    MB_CHK_SET_ERR(rval, "tag_get_handle to pressure_tag failed");
+    rval = mb->tag_set_data(pressure_tag, my_elems, &X[0]);
+    printf("<%d> Done\n", rank);
 
     // Cleaning up alocated objects.
     delete topo_util;
