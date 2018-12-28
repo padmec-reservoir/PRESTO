@@ -204,10 +204,17 @@ int main(int argc, char **argv) {
 
     printf("<%d> Setting pressure tag\n", rank);
     Tag pressure_tag;
-    rval = mb->tag_get_handle("PRESSURE", 1, MB_TYPE_DOUBLE, pressure_tag, MB_TAG_DENSE);
+    rval = mb->tag_get_handle("PRESSURE", 1, MB_TYPE_DOUBLE, pressure_tag, MB_TAG_DENSE | MB_TAG_CREAT);
     MB_CHK_SET_ERR(rval, "tag_get_handle to pressure_tag failed");
     rval = mb->tag_set_data(pressure_tag, my_elems, &X[0]);
+    MB_CHK_SET_ERR(rval, "tag_set_data to pressure_tag failed");
     printf("<%d> Done\n", rank);
+
+    EntityHandle volumes_meshset;
+    rval = mb->create_meshset(0, volumes_meshset);
+    MB_CHK_SET_ERR(rval, "create_meshset failed");
+    rval = mb->write_file("solved_mesh.h5m", 0, 0, &volumes_meshset, 1);
+    MB_CHK_SET_ERR(rval, "write_file failed");
 
     // Cleaning up alocated objects.
     delete topo_util;
