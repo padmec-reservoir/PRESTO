@@ -1,9 +1,7 @@
 /*
     TODO:
-        - Resolver o sistema encontrado no final.
         - Buscar exemplos e testar desempenho.
             - Procurar ferramentas para medição de desempenho de programas paralelos.
-        - Gerar malha com o resultado final.
         - Refatorar código.
             - Modularizar os trechos de código (organizar em funções e classes).
 */
@@ -67,6 +65,7 @@ int main(int argc, char **argv) {
     string input_file = "part_mesh.h5m";
     string output_file = "solve_mesh.h5m";
     string parallel_read_opts = "PARALLEL=READ_PART;PARTITION=PARALLEL_PARTITION;PARALLEL_RESOLVE_SHARED_ENTS";
+    string parallel_write_opts = "PARALLEL=WRITE_PART";
     ErrorCode rval;
 
     // In case the user provides another file name, use it.
@@ -155,6 +154,7 @@ int main(int argc, char **argv) {
     double e1_centroid[3], e2_centroid[3], e1_perm[9], e2_perm[9], pressure = 0, diag_coef = 0;
     double equiv_perm = 0.0, centroid_dist = 0.0;
     double unit_vector[3] = {0, 0, 0};
+
     int row_id = -1, n = 0;
     printf("<%d> Computing the method\n", rank);
     for (Range::iterator it = my_elems.begin(); it != my_elems.end(); it++) {
@@ -180,6 +180,7 @@ int main(int argc, char **argv) {
         }
         else {
             diag_coef = 1;
+            bc_indexes.push_back(n);
         }
         rval = mb->tag_get_data(global_id_tag, &(*it), 1, &row_id); MB_CHK_ERR(rval);
 
@@ -199,7 +200,7 @@ int main(int argc, char **argv) {
 
     Epetra_LinearProblem linear_problem (&A, &X, &B);
     AztecOO solver (linear_problem);
-    solver.Iterate(100000, 1e-10);
+    solver.Iterate(10000, 1e-14);
     printf("<%d> Solved it.\n", rank);
 
     printf("<%d> Setting pressure tag\n", rank);
@@ -213,7 +214,11 @@ int main(int argc, char **argv) {
     EntityHandle volumes_meshset;
     rval = mb->create_meshset(0, volumes_meshset);
     MB_CHK_SET_ERR(rval, "create_meshset failed");
-    rval = mb->write_file("solved_mesh.h5m", 0, 0, &volumes_meshset, 1);
+    rval = mb->add_entities(volumes_meshset, my_elems);
+    MB_CHK_SET_ERR(rval, "add_entitites failed");
+
+    rval = mb->write_file(output_file.c_str(), 0, parallel_write_opts.c_str(), 
+                            &volumes_meshset, 1);
     MB_CHK_SET_ERR(rval, "write_file failed");
 
     // Cleaning up alocated objects.
