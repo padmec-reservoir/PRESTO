@@ -37,8 +37,12 @@ using namespace std;
 using namespace moab;
 
 double get_equivalent_perm (double k1[9], double k2[9], double unit_vector[3]) {
-    double k1_pre[3] = {k1[0]*unit_vector[0], k1[4]*unit_vector[1], k1[8]*unit_vector[2]};
-    double k2_pre[3] = {k2[0]*unit_vector[0], k2[4]*unit_vector[1], k2[8]*unit_vector[2]};
+    double k1_pre[3] = {k1[0]*unit_vector[0] + k1[3]*unit_vector[0] + k1[6]*unit_vector[0],
+                        k1[1]*unit_vector[1] + k1[4]*unit_vector[1] + k1[7]*unit_vector[1],
+                        k1[2]*unit_vector[2] + k1[5]*unit_vector[2] + k1[8]*unit_vector[2]};
+    double k2_pre[3] = {k2[0]*unit_vector[0] + k2[3]*unit_vector[0] + k2[6]*unit_vector[0],
+                        k2[1]*unit_vector[1] + k2[4]*unit_vector[1] + k2[7]*unit_vector[1],
+                        k2[2]*unit_vector[2] + k2[5]*unit_vector[2] + k2[8]*unit_vector[2]};
     double k1_eq = k1_pre[0]*unit_vector[0] + k1_pre[1]*unit_vector[1] + k1_pre[2]*unit_vector[2];
     double k2_eq = k2_pre[0]*unit_vector[0] + k2_pre[1]*unit_vector[1] + k2_pre[2]*unit_vector[2];
     return 2*k1_eq*k2_eq/(k1_eq + k2_eq);
@@ -93,8 +97,10 @@ int main(int argc, char **argv) {
     }
 
     // Open file containing the mesh with the options specified above.
+    printf("<%d> Loading file...\n", rank);
     rval = mb->load_file(input_file.c_str(), 0, parallel_read_opts.c_str());
     MB_CHK_SET_ERR(rval, "load_file failed");
+    printf("<%d> Done loading file\n", rank);
 
     // Creating an instance of moab::MeshTopoUtil for handling operations with
     // elements adjacencies.
@@ -124,15 +130,17 @@ int main(int argc, char **argv) {
         cout << "Null pointer" << endl;
         return -1;
     }
-    Tag global_id_tag, centroid_tag, perm_tag, dirichlet_tag;
+    Tag global_id_tag, centroid_tag, perm_tag, dirichlet_tag, neumann_tag;
     rval = mb->tag_get_handle("GLOBAL_ID", global_id_tag); MB_CHK_ERR(rval);
     rval = mb->tag_get_handle("CENTROID", centroid_tag); MB_CHK_ERR(rval);
     rval = mb->tag_get_handle("PERMEABILITY", perm_tag); MB_CHK_ERR(rval);
     rval = mb->tag_get_handle("DIRICHLET_BC", dirichlet_tag); MB_CHK_ERR(rval);
+    rval = mb->tag_get_handle("NEUMANN_BC", neumann_tag); MB_CHK_ERR(rval);
     rval = mb->tag_get_data(global_id_tag, my_elems, (void*) gids); MB_CHK_ERR(rval);
 
     // It is necessary to exchange tags for the ghost elements. Those are not
     // transferred when exchange_ghost_cells is called.
+    printf("<%d> Exchanging tags\n", rank);
     Range empty_set;
     rval = pcomm->exchange_tags(centroid_tag, empty_set);
     MB_CHK_SET_ERR(rval, "exchange_tags for centroid failed");
@@ -140,6 +148,9 @@ int main(int argc, char **argv) {
     MB_CHK_SET_ERR(rval, "exchange_tags for permeability failed");
     rval = pcomm->exchange_tags(dirichlet_tag, empty_set);
     MB_CHK_SET_ERR(rval, "exchange_tags for dirichlet bc failed");
+    rval = pcomm->exchange_tags(neumann_tag, empty_set);
+    MB_CHK_SET_ERR(rval, "exchange_tags for neumann bc failed");
+    printf("<%d> Done\n", rank);
 
     // Initializing the Epetra structure for a sparse matrix.
     Epetra_Map row_map (num_global_elems, num_local_elems, gids, 0, epetra_comm);
@@ -151,7 +162,7 @@ int main(int argc, char **argv) {
     Range adjacencies;
     std::vector<double> row_values;
     std::vector<int> row_indexes;
-    double e1_centroid[3], e2_centroid[3], e1_perm[9], e2_perm[9], pressure = 0, diag_coef = 0;
+    double e1_centroid[3], e2_centroid[3], e1_perm[9], e2_perm[9], pressure = 0, flux = 0, diag_coef = 0;
     double equiv_perm = 0.0, centroid_dist = 0.0;
     double unit_vector[3] = {0, 0, 0};
 
@@ -159,6 +170,7 @@ int main(int argc, char **argv) {
     printf("<%d> Computing the method\n", rank);
     for (Range::iterator it = my_elems.begin(); it != my_elems.end(); it++) {
         rval = mb->tag_get_data(dirichlet_tag, &(*it), 1, &pressure); MB_CHK_ERR(rval);
+        // rval = mb->tag_get_data(neumann_tag, &(*it), 1, &flux); MB_CHK_ERR(rval);
         if (pressure == 0) {
             rval = topo_util->get_bridge_adjacencies(*it, 2, 3, adjacencies); MB_CHK_ERR(rval);
             rval = mb->tag_get_data(centroid_tag, &(*it), 1, &e1_centroid); MB_CHK_ERR(rval);
@@ -180,7 +192,6 @@ int main(int argc, char **argv) {
         }
         else {
             diag_coef = 1;
-            bc_indexes.push_back(n);
         }
         rval = mb->tag_get_data(global_id_tag, &(*it), 1, &row_id); MB_CHK_ERR(rval);
 
@@ -188,7 +199,10 @@ int main(int argc, char **argv) {
         row_indexes.push_back(row_id);
 
         A.InsertGlobalValues(row_id, row_values.size(), &row_values[0], &row_indexes[0]);
-        B[n++] = pressure;
+        // if (flux != -1)
+            // B[n++] = pressure + flux;
+        // else
+            B[n++] = pressure;
 
         row_values.clear();
         row_indexes.clear();
@@ -200,7 +214,7 @@ int main(int argc, char **argv) {
 
     Epetra_LinearProblem linear_problem (&A, &X, &B);
     AztecOO solver (linear_problem);
-    solver.Iterate(10000, 1e-14);
+    solver.Iterate(10000, 1e-16);
     printf("<%d> Solved it.\n", rank);
 
     printf("<%d> Setting pressure tag\n", rank);

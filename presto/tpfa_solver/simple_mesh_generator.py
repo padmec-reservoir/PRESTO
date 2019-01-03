@@ -50,6 +50,15 @@ def pressure_val(coord):
         return 10000.0
     else:
         return 0
+    # if (coord[0] > 0 and coord[0] < dx) or (coord[0] > (nx-1)*dx and coord[0] < nx*dx):
+    #     return 1.0
+    # return 0.0
+
+def flux_value(coord):
+    if (coord[1] > 0 and coord[1] < dy) or (coord[1] > (ny-1)*dy and coord[1] < ny*dy) \
+        or (coord[2] > 0 and coord[2] < dz) or (coord[2] > (nz-1)*dz and coord[2] < nz*dz):
+        return 0.0
+    return -1.0
 
 def main():
     global nx, ny, nz, dx, dy, dz, num_elements
@@ -116,11 +125,16 @@ def main():
                                 vertex_coords[3*int(v[0]-1)+2] + (dz/2)] \
                                 for v in mesh_connectivity])
     perm_data = np.fromfile('spe_perm.dat', np.float, -1, '         ')
+    # permeability = np.array([[1.0, 0.0, 0.0, \
+    #                           0.0, 1.0, 0.0, \
+    #                           0.0, 0.0, 1.0] \
+    #                           for i in range(num_elements)])
     permeability = np.array([[perm_data[i], 0.0, 0.0, \
                               0.0, perm_data[i + num_elements], 0.0, \
                               0.0, 0.0, perm_data[i + 2*num_elements]] \
                               for i in range(num_elements)])
     dirichlet = np.array([pressure_val(c) for c in centroid_coord])
+    # neumann = np.array([flux_value(c) for c in centroid_coord])
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
     print("Setting data to tags")
@@ -128,12 +142,14 @@ def main():
     mbcore.tag_set_data(centroid_tag, elem_handles, centroid_coord)
     mbcore.tag_set_data(permeability_tag, elem_handles, permeability)
     mbcore.tag_set_data(dirichlet_tag, elem_handles, dirichlet)
-    
+    # mbcore.tag_set_data(neumann_tag, elem_handles, neumann)
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
     print("Writing .h5m file")
-    mbcore.write_file("tpfa_mesh.h5m")
     ts = time.time()
+    volumes_meshset = mbcore.create_meshset()
+    mbcore.add_entities(volumes_meshset, elem_handles)
+    mbcore.write_file("tpfa_mesh.h5m", output_sets=[volumes_meshset])
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
 
