@@ -38,6 +38,7 @@ using namespace moab;
 enum TagsID {global_id, permeability, centroid, dirichlet, neumann};
 
 class TPFASolver {
+public:
     Interface *mb;
     ParallelComm *pcomm;
     MeshTopoUtil *topo_util;
@@ -46,7 +47,7 @@ class TPFASolver {
     char *centroid_tag_name;
     char *dirichlet_tag_name;
     char *neumann_tag_name;
-public:
+
 	TPFASolver () {
 		/* Default constructor */
 		this->mb = new Core ();
@@ -352,6 +353,34 @@ private:
 
 
 int main(int argc, char **argv) {
-	
+	MPI_Init(&argc, &argv);
+
+	TPFASolver* solver = new TPFASolver();
+	ErrorCode rval;
+	string input_file = "part_mesh.h5m";
+    string output_file = "solve_mesh.h5m";
+    string parallel_read_opts = "PARALLEL=READ_PART;PARTITION=PARALLEL_PARTITION;PARALLEL_RESOLVE_SHARED_ENTS";
+    string parallel_write_opts = "PARALLEL=WRITE_PART";
+
+	rval = solver->mb->load_file(input_file.c_str(), 0, parallel_read_opts.c_str());
+	MB_CHK_SET_ERR(rval, "load_file failed");
+
+	solver->run();
+
+	EntityHandle volumes_meshset;
+    rval = solver->mb->create_meshset(0, volumes_meshset);
+    MB_CHK_SET_ERR(rval, "create_meshset failed");
+	Range my_elems;
+	rval = solver->mb->get_entities_by_dimension(0, 3, my_elems, false);
+    rval = solver->mb->add_entities(volumes_meshset, my_elems);
+    MB_CHK_SET_ERR(rval, "add_entitites failed");
+
+	printf("Writing file\n");
+	rval = solver->mb->write_file(output_file.c_str(), 0, parallel_write_opts.c_str(), &volumes_meshset, 1);
+	printf("Done\n");
+	MB_CHK_SET_ERR(rval, "write_file failed");
+
+	MPI_Finalize();
+
     return 0;
 }
