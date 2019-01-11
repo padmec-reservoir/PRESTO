@@ -134,7 +134,7 @@ def main():
                               0.0, 0.0, perm_data[i + 2*num_elements]] \
                               for i in range(num_elements)])
     dirichlet = np.array([pressure_val(c) for c in centroid_coord])
-    # neumann = np.array([flux_value(c) for c in centroid_coord])
+    neumann = np.array([flux_value(c) for c in centroid_coord])
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
     print("Setting data to tags")
@@ -142,7 +142,7 @@ def main():
     mbcore.tag_set_data(centroid_tag, elem_handles, centroid_coord)
     mbcore.tag_set_data(permeability_tag, elem_handles, permeability)
     mbcore.tag_set_data(dirichlet_tag, elem_handles, dirichlet)
-    # mbcore.tag_set_data(neumann_tag, elem_handles, neumann)
+    mbcore.tag_set_data(neumann_tag, elem_handles, neumann)
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
     print("Writing .h5m file")
