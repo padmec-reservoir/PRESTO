@@ -52,6 +52,7 @@ public:
         /* Default constructor */
         this->mb = new Core ();
         this->comm = MPI_COMM_WORLD;
+        this->pcomm = new ParallelComm (this->mb, this->comm);
         this->topo_util = new MeshTopoUtil (mb);
         this->perm_tag_name = "PERMEABILITY";
         this->centroid_tag_name = "CENTROID";
@@ -108,6 +109,7 @@ public:
         // Calculate the total numbers of elements in the mesh.
         int num_local_elems = volumes.size(), num_global_elems = 0;
         MPI_Allreduce(&num_local_elems, &num_global_elems, 1, MPI_INT, MPI_SUM, this->comm);
+        printf("<%d> # global elems: %d\n", rank, num_global_elems);
 
         // Get tags on elements and exchange those from shared elements.
         Tag tag_handles[5];
@@ -352,36 +354,34 @@ private:
 
 
 int main(int argc, char **argv) {
-	MPI_Init(&argc, &argv);
+    MPI_Init(&argc, &argv);
 
-	TPFASolver* solver = new TPFASolver();
-	ErrorCode rval;
-	string input_file = "part_mesh.h5m";
+    TPFASolver* solver = new TPFASolver();
+    ErrorCode rval;
+    string input_file = "part_mesh.h5m";
     string output_file = "solve_mesh.h5m";
     string parallel_read_opts = "PARALLEL=READ_PART;PARTITION=PARALLEL_PARTITION;PARALLEL_RESOLVE_SHARED_ENTS";
     string parallel_write_opts = "PARALLEL=WRITE_PART";
 
-    printf("Loading file...\n");
     rval = solver->mb->load_file(input_file.c_str(), 0, parallel_read_opts.c_str());
-    printf("Done\n");
-	MB_CHK_SET_ERR(rval, "load_file failed");
+    MB_CHK_SET_ERR(rval, "load_file failed");
 
-	solver->run();
+    solver->run();
 
-	EntityHandle volumes_meshset;
+    EntityHandle volumes_meshset;
     rval = solver->mb->create_meshset(0, volumes_meshset);
     MB_CHK_SET_ERR(rval, "create_meshset failed");
-	Range my_elems;
-	rval = solver->mb->get_entities_by_dimension(0, 3, my_elems, false);
+    Range my_elems;
+    rval = solver->mb->get_entities_by_dimension(0, 3, my_elems, false);
     rval = solver->mb->add_entities(volumes_meshset, my_elems);
     MB_CHK_SET_ERR(rval, "add_entitites failed");
 
-	printf("Writing file\n");
-	rval = solver->mb->write_file(output_file.c_str(), 0, parallel_write_opts.c_str(), &volumes_meshset, 1);
-	printf("Done\n");
-	MB_CHK_SET_ERR(rval, "write_file failed");
+    printf("Writing file\n");
+    rval = solver->mb->write_file(output_file.c_str(), 0, parallel_write_opts.c_str(), &volumes_meshset, 1);
+    printf("Done\n");
+    MB_CHK_SET_ERR(rval, "write_file failed");
 
-	MPI_Finalize();
+    MPI_Finalize();
 
     return 0;
 }
