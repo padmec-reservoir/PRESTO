@@ -250,7 +250,7 @@ private:
 
         std::vector<Tag> tags_vector;
         Range empty_set;
-        for (int i = 1; i < 5; i++) {
+        for (int i = 0; i < 5; i++) {
             tags_vector.push_back(tags[i]);
         }
         rval = this->pcomm->exchange_tags(tags_vector, tags_vector, empty_set);
