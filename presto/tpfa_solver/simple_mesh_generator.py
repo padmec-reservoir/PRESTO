@@ -40,19 +40,21 @@ def create_mesh_connectivity(vertex_handles, vertex_coords):
     return mesh_connectivity
 
 def pressure_val(coord):
-    if (coord[0] > 0 and coord[0] < dx) and (coord[1] > 0 and coord[1] < dy) \
-        or (coord[0] > (nx-1)*dx and coord[0] < nx*dx) and (coord[1] > 0 and coord[1] < dy) \
-        or (coord[0] > (nx-1)*dx and coord[0] < nx*dx) and (coord[1] > (ny-1)*dy and coord[1] < ny*dy) \
-        or (coord[0] > 0 and coord[0] < dx) and (coord[1] > (ny-1)*dy and coord[1] < ny*dy):
-        return 4000.0
-    elif (coord[0] > 580 and coord[0] < 600) and \
-        (coord[1] > 1090 and coord[1] < 1100):
-        return 10000.0
-    else:
-        return 0
-    # if (coord[0] > 0 and coord[0] < dx) or (coord[0] > (nx-1)*dx and coord[0] < nx*dx):
-    #     return 1.0
-    # return 0.0
+    # if (coord[0] > 0 and coord[0] < dx) and (coord[1] > 0 and coord[1] < dy) \
+    #     or (coord[0] > (nx-1)*dx and coord[0] < nx*dx) and (coord[1] > 0 and coord[1] < dy) \
+    #     or (coord[0] > (nx-1)*dx and coord[0] < nx*dx) and (coord[1] > (ny-1)*dy and coord[1] < ny*dy) \
+    #     or (coord[0] > 0 and coord[0] < dx) and (coord[1] > (ny-1)*dy and coord[1] < ny*dy):
+    #     return 4000.0
+    # elif (coord[0] > 580 and coord[0] < 600) and \
+    #     (coord[1] > 1090 and coord[1] < 1100):
+    #     return 10000.0
+    # else:
+    #     return 0
+    if (coord[0] > 0 and coord[0] < dx):
+        return 10.0
+    elif (coord[0] > (nx-1)*dx and coord[0] < nx*dx):
+        return 1000.0
+    return 0.0
 
 def flux_value(coord):
     if (coord[1] > 0 and coord[1] < dy) or (coord[1] > (ny-1)*dy and coord[1] < ny*dy) \
@@ -71,7 +73,6 @@ def main():
         dx = float(sys.argv[2])
         dy = float(sys.argv[4])
         dz = float(sys.argv[6])
-        dim = 2
         num_elements = nx*ny*nz
         num_vertex = (nx+1)*(ny+1)*(nz+1)
     else:
@@ -111,6 +112,12 @@ def main():
     # Setting up tags for permeability and centroid coordinates for each element.
     centroid_tag = mbcore.tag_get_handle('CENTROID', 3, types.MB_TYPE_DOUBLE, \
                                           types.MB_TAG_DENSE, True)
+    centroid_x_tag = mbcore.tag_get_handle('CENTROID_X', 1, types.MB_TYPE_DOUBLE, \
+                                          types.MB_TAG_DENSE, True)
+    centroid_y_tag = mbcore.tag_get_handle('CENTROID_Y', 1, types.MB_TYPE_DOUBLE, \
+                                          types.MB_TAG_DENSE, True)
+    centroid_z_tag = mbcore.tag_get_handle('CENTROID_Z', 1, types.MB_TYPE_DOUBLE, \
+                                          types.MB_TAG_DENSE, True)
     permeability_tag = mbcore.tag_get_handle('PERMEABILITY', 9, types.MB_TYPE_DOUBLE, \
                                               types.MB_TAG_DENSE, True)
     dirichlet_tag = mbcore.tag_get_handle('DIRICHLET_BC', 1, types.MB_TYPE_DOUBLE, \
@@ -124,15 +131,17 @@ def main():
                                 vertex_coords[3*int(v[0]-1)+1] + (dy/2), \
                                 vertex_coords[3*int(v[0]-1)+2] + (dz/2)] \
                                 for v in mesh_connectivity])
-    perm_data = np.fromfile('spe_perm.dat', np.float, -1, '         ')
-    # permeability = np.array([[1.0, 0.0, 0.0, \
-    #                           0.0, 1.0, 0.0, \
-    #                           0.0, 0.0, 1.0] \
+    centroid_x = np.array([centroid_coord[i][0] for i in range(num_elements)])
+    centroid_y = np.array([centroid_coord[i][1] for i in range(num_elements)])
+    centroid_z = np.array([centroid_coord[i][2] for i in range(num_elements)])
+    # perm_data = np.fromfile('spe_perm.dat', np.float, -1, '         ')
+    permeability = np.tile([1.0, 0.0, 0.0, \
+                            0.0, 1.0, 0.0, \
+                            0.0, 0.0, 1.0], num_elements)
+    # permeability = np.array([[perm_data[i], 0.0, 0.0, \
+    #                           0.0, perm_data[i + num_elements], 0.0, \
+    #                           0.0, 0.0, perm_data[i + 2*num_elements]] \
     #                           for i in range(num_elements)])
-    permeability = np.array([[perm_data[i], 0.0, 0.0, \
-                              0.0, perm_data[i + num_elements], 0.0, \
-                              0.0, 0.0, perm_data[i + 2*num_elements]] \
-                              for i in range(num_elements)])
     dirichlet = np.array([pressure_val(c) for c in centroid_coord])
     neumann = np.array([flux_value(c) for c in centroid_coord])
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
@@ -143,6 +152,9 @@ def main():
     mbcore.tag_set_data(permeability_tag, elem_handles, permeability)
     mbcore.tag_set_data(dirichlet_tag, elem_handles, dirichlet)
     mbcore.tag_set_data(neumann_tag, elem_handles, neumann)
+    mbcore.tag_set_data(centroid_x_tag, elem_handles, centroid_x)
+    mbcore.tag_set_data(centroid_y_tag, elem_handles, centroid_y)
+    mbcore.tag_set_data(centroid_z_tag, elem_handles, centroid_z)
     print("Done\nTime elapsed: {0}\n".format(time.time() - ts))
 
     print("Writing .h5m file")
