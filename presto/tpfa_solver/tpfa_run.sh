@@ -1,3 +1,4 @@
+#!/bin/sh
 echo "#### CREATING MESH ####"
 python simple_mesh_generator.py 60 20 220 10 85 2
 echo "#### DONE ####"
