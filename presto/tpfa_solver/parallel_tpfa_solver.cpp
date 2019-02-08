@@ -16,12 +16,14 @@
 #endif
 
 /* Trilinos includes */
-#include <Epetra_MpiComm.h>
-#include <Epetra_CrsMatrix.h>
-#include <Epetra_Map.h>
-#include <Epetra_Vector.h>
-#include <Epetra_Version.h>
-#include <AztecOO.h>
+#include "Epetra_MpiComm.h"
+#include "Epetra_CrsMatrix.h"
+#include "Epetra_Map.h"
+#include "Epetra_Vector.h"
+#include "Epetra_Version.h"
+#include "AztecOO.h"
+#include "ml_include.h"
+#include "ml_epetra_preconditioner.h"
 
 /* MPI header */
 #include <mpi.h>
@@ -141,7 +143,20 @@ public:
 
         Epetra_LinearProblem linear_problem (&A, &X, &b);
         AztecOO solver (linear_problem);
+
+        Teuchos::ParameterList MLList;
+        ML_Epetra::MultiLevelPreconditioner * MLPrec = new ML_Epetra::MultiLevelPreconditioner(A, true);
+        ML_Epetra::SetDefaults("SA",MLList);
+        MLList.set("max levels", 4);
+        MLList.set("repartition: enable", 1);
+        MLList.set("repartition: partitioner", "ParMetis");
+        MLList.set("coarse: type", "Chebyshev");
+        MLList.set("coarse: sweeps", 2);
+        MLList.set("smoother: type", "Chebyshev");
+        MLList.set("aggregation: type", "METIS");
+        solver.SetPrecOperator(MLPrec);
         solver.Iterate(10000, 1e-14);
+        delete MLPrec;
 
         printf("<%d> Setting pressure...\n", rank);
         ts = clock();
